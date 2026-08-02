@@ -1,0 +1,6 @@
+script-runner.mcp.oyren.ai {
+	reverse_proxy app:3000
+	request_body {
+		max_size 50MB
+	}
+}

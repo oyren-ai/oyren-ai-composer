@@ -1,0 +1,19 @@
+# Edge-mode host: route admin API for the Caddy wildcard reverse proxy.
+# Caddy itself runs as the distro's caddy.service with deploy/edge/Caddyfile (wildcard
+# DNS-01 cert — manual one-time setup, see deploy/edge/README.md); this service only
+# maintains the host→upstream map and reloads caddy on changes.
+# ConditionPathExists makes the baked-in unit a no-op until /etc/oyren/edge.env exists.
+[Unit]
+Description=Oyren sandbox edge route admin
+After=network-online.target caddy.service
+Wants=network-online.target
+ConditionPathExists=/etc/oyren/edge.env
+
+[Service]
+EnvironmentFile=/etc/oyren/edge.env
+ExecStart=/usr/bin/node /srv/composer/app/dist/edge/main.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

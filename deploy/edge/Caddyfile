@@ -1,0 +1,26 @@
+# Edge Caddyfile: one wildcard site whose hostnames are routed dynamically.
+# SANDBOX_EDGE_DOMAIN comes from /etc/oyren/edge.env (systemd passes it through; when running
+# caddy standalone, export it first). The wildcard cert REQUIRES a DNS-01 challenge — fill in
+# the dns block below for your DNS provider (see README.md; this is manual one-time setup).
+*.{$SANDBOX_EDGE_DOMAIN} {
+	tls {
+		# TODO(one-time setup): DNS provider plugin + credentials — any github.com/caddy-dns/*
+		# module works (requires a caddy build with that module — see README.md).
+		dns REPLACE_ME_PROVIDER REPLACE_ME_CREDENTIALS
+	}
+
+	# host → upstream, entries maintained by the route admin API (oyren-edge.service) in
+	# oyren-routes.map; every route change rewrites that file and `caddy reload`s.
+	map {host} {upstream} {
+		import /etc/caddy/oyren-routes.map
+		default ""
+	}
+
+	# Unrouted hostname — don't proxy anywhere. The matcher is required: Caddy orders `respond`
+	# BEFORE `reverse_proxy`, so an unconditional respond would shadow every routed host too.
+	@unknown expression `{upstream} == ""`
+	respond @unknown "unknown host" 404
+
+	@known expression `{upstream} != ""`
+	reverse_proxy @known {upstream}
+}

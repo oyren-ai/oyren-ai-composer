@@ -1,0 +1,17 @@
+# Sandbox-mode VM: supervise ONE long-lived oyren-sandbox container.
+# Baked into the sandbox snapshot ENABLED; ConditionPathExists makes it a no-op until the # VM's cloud-init user_data writes /etc/oyren/sandbox.env and (re)starts it.
+[Unit]
+Description=Oyren sandbox container supervisor
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+EnvironmentFile=/etc/oyren/sandbox.env
+ExecStart=/usr/bin/node /srv/composer/app/dist/sandbox/main.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

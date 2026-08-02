@@ -1,0 +1,19 @@
+# Build-mode VM: clone the configured repo and run build-and-push-all.sh ONCE,
+# serving progress/result on :3000 (/status, bearer STATUS_TOKEN) until the caller
+# reads the outcome and deletes the VM. Restart=no on purpose: a crashed job must
+# surface as failed to the poller, not silently re-clone and re-push.
+# ConditionPathExists makes the baked-in unit a no-op until cloud-init writes the env.
+[Unit]
+Description=Oyren image build-and-push job
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/oyren/build.env
+
+[Service]
+EnvironmentFile=/etc/oyren/build.env
+ExecStart=/usr/bin/node /srv/composer/app/dist/buildjob/main.js
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
