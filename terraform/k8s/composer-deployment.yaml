@@ -1,0 +1,212 @@
+# Oyren Composer Deployment for Kubernetes
+# This deploys the composer service that launches agent pods
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: composer-config
+  namespace: oyren-system
+data:
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  POD_NAMESPACE: "oyren-agents"  # Namespace where agent pods are created
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oyren-composer
+  namespace: oyren-system
+  labels:
+    app: oyren-composer
+    component: composer
+spec:
+  replicas: 2  # Run 2 replicas for high availability
+  selector:
+    matchLabels:
+      app: oyren-composer
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero-downtime updates
+  template:
+    metadata:
+      labels:
+        app: oyren-composer
+        component: composer
+    spec:
+      serviceAccountName: oyren-composer  # Created by Terraform
+
+      containers:
+      - name: composer
+        image: oyrendev/oyren-composer:latest  # Replace with your image
+        imagePullPolicy: Always
+
+        ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+
+        env:
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: composer-config
+              key: PORT
+
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: composer-config
+              key: LOG_LEVEL
+
+        - name: POD_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: composer-config
+              key: POD_NAMESPACE
+
+        # API token from Terraform-created secret
+        - name: SCRIPT_RUNNER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: composer-api-token
+              key: token
+              optional: true  # Allow deployment even if secret doesn't exist
+
+        # Kubernetes API access (automatically mounted)
+        - name: KUBERNETES_SERVICE_HOST
+          value: "kubernetes.default.svc"
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 2
+
+      # Prefer to run on different nodes for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - oyren-composer
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oyren-composer
+  namespace: oyren-system
+  labels:
+    app: oyren-composer
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: oyren-composer
+
+---
+# Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oyren-composer
+  namespace: oyren-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Enable WebSocket support for terminal connections
+    nginx.ingress.kubernetes.io/websocket-services: oyren-composer
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Uncomment to enable TLS with cert-manager
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  # Uncomment to enable TLS
+  # tls:
+  # - hosts:
+  #   - composer.yourdomain.com
+  #   secretName: composer-tls
+  rules:
+  - host: composer.yourdomain.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: oyren-composer
+            port:
+              number: 80
+
+---
+# HorizontalPodAutoscaler - automatically scale based on CPU/memory
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: oyren-composer
+  namespace: oyren-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: oyren-composer
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 50  # Scale down by 50% at a time
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Scale up immediately
+      policies:
+      - type: Percent
+        value: 100  # Double the pods at a time
+        periodSeconds: 15
