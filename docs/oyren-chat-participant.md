@@ -38,14 +38,34 @@ Then flip the two settings in `deploy/editor/machine-settings.json` that current
 chat (`chat.commandCenter.enabled`, `chat.agent.enabled`); they are `false` today only because no
 provider was wired to it.
 
-## The one thing to verify FIRST
+## What is already settled
 
-Whether Code-OSS 1.109.5 exposes `vscode.chat.createChatParticipant` as a **stable** API. Microsoft
-has historically gated parts of chat behind proposed APIs, and Code-OSS builds strip Copilot-specific
-pieces. If it needs a proposal, openvscode must be launched with
-`--enable-proposed-api oyren.oyren-agent`, which is fine but must be wired into whatever starts the
-editor. **Do not build the extension before settling this** — it decides whether the approach works
-at all.
+**The API is stable — no `--enable-proposed-api` needed.** `vscode.chat.createChatParticipant` is
+documented in the finalized `vscode-api` reference (proposed APIs are not published there), and the
+official chat guide uses it with no `enabledApiProposals` entry. The contribution point is:
+
+```json
+"contributes": {
+  "chatParticipants": [
+    { "id": "oyren.agent", "name": "oyren", "fullName": "Oyren", "description": "…", "isSticky": true }
+  ]
+}
+```
+
+**No Copilot dependency.** Microsoft's examples stream with `request.model.sendRequest(...)`, i.e. a
+language model VS Code supplies — which would drag in Copilot entitlements that Code-OSS lacks. We do
+not need that path at all: the handler streams from Oyren's own `/agent` endpoint into
+`stream.markdown()`. So the participant touches neither `vscode.lm` nor any model provider.
+
+## The one thing still to verify
+
+Whether **openvscode-server 1.109.5 renders the Chat view and loads `chatParticipants` at all**. The
+chat UI lives in Code-OSS (`vs/workbench/contrib/chat`), so it should, but Gitpod's build could gate
+or strip it, and no amount of API documentation settles that — it is a property of the build.
+
+Verify empirically rather than by reading: bake a snapshot, launch a session, open the editor, and
+check whether the Chat view exists and lists the participant. That is a 20-minute loop and it gives a
+definite answer.
 
 Note the Claude Code extension does NOT answer this question: it contributes its own view container
 rather than a chat participant, so it exercises none of the chat API.
@@ -60,11 +80,12 @@ rather than a chat participant, so it exercises none of the chat API.
 > `deploy/sandbox-host/`, and `sandbox-runtime/src/server.js` for how the agent endpoint is served
 > and how the editor is installed and started. `docs/oyren-chat-participant.md` states the problem.
 >
-> STEP 1, before writing any extension code: determine whether openvscode-server 1.109.5 exposes
-> `vscode.chat.createChatParticipant` as a stable API, or whether it requires
-> `--enable-proposed-api`. Check the Code-OSS source for that version and its bundled `vscode.d.ts`.
-> Report the finding and how you established it. If it needs a proposal, plan how to pass the flag
-> wherever openvscode is launched.
+> STEP 1, before writing much extension code: confirm openvscode-server 1.109.5 actually RENDERS the
+> Chat view and loads `chatParticipants`. The API itself is already confirmed stable (no
+> `enabledApiProposals` required) and needs no Copilot model — see the notes above — but whether
+> Gitpod's build ships the chat UI is a property of the build, not the API, so test it: install a
+> throwaway extension contributing one participant, bake, launch a session, and look. If the view is
+> absent, stop and report rather than building on it.
 >
 > STEP 2: build the extension in `deploy/editor/oyren-agent-extension/` — register the participant,
 > stream from the runtime's `/agent` endpoint over `127.0.0.1`, render markdown responses
