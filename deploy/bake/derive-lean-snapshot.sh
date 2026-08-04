@@ -14,7 +14,8 @@ source ./lib.sh
 : "${BASE_SNAPSHOT_ID:?must be set — the image id printed by the base bake}"
 
 NAME="oyren-derive-lean-$(date +%s)"
-SNAPSHOT_NAME="oyren-sandbox-droplet-lean-$(date -u +%Y-%m-%d)"
+# Mirrors bake-base-snapshot.sh: variant in the name, UTC HHMM so same-day runs don't collide.
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-lean-$(date -u +%Y-%m-%d-%H%M)}"
 
 # DISK SIZE IS THE CONSTRAINT, NOT CPU. DigitalOcean refuses to boot an image onto a droplet whose
 # disk is smaller than the one the image was made on, so the size used HERE sets the minimum size of

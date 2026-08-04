@@ -19,7 +19,10 @@ source ./lib.sh
 
 COMPOSER_DIR="$(cd ../.. && pwd)"
 NAME="oyren-bake-sandbox-$(date +%s)"
-SNAPSHOT_NAME="oyren-sandbox-droplet-$(date -u +%Y-%m-%d-%H%M)"
+# Name the VARIANT explicitly. There are two images now and they are indistinguishable from a bare
+# date, which is how you end up pointing DROPLET_SNAPSHOT_ID at the Lean one. The UTC HHMM suffix
+# keeps two bakes on the same day from colliding.
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-base-$(date -u +%Y-%m-%d-%H%M)}"
 
 # Bake on the SMALLEST disk (s-1vcpu-1gb = 25GB): DO refuses to boot an image onto a droplet with a
 # smaller disk than the image was made on, so the bake size sets the MINIMUM session droplet size.
