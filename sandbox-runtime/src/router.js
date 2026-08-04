@@ -24,6 +24,7 @@ const { handleRuns } = require("./runs")
 const { handleRunsPage } = require("./runsPage")
 const { handleGateway } = require("./gateway")
 const { STATIC_DIR, SESSION_TOKEN } = require("./config")
+const { queryTokenOk } = require("./sessionAuth")
 
 function createRouter({ supervisor, workdir, controlToken, routes }) {
   return function handle(req, res) {
@@ -45,7 +46,18 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
     if (route.kind === "logs") return handleLogs(req, res)
     if (route.kind === "runs") return handleRuns(req, res)
     if (route.kind === "runs-page") return handleRunsPage(req, res)
-    if (route.kind === "gateway") return handleGateway(req, res, { routes, sessionToken: SESSION_TOKEN, exposedPort: supervisor.exposedPort })
+    // The gateway page renders the session token into its download/logs links, and that token is
+    // what gates the terminal WS (a root shell), the agent stream and downloads. Serving it
+    // unauthenticated handed the whole session to anyone who could guess the hostname — and
+    // hostnames are `term-<base36 seconds>-<4 chars of Math.random()>`, not CSPRNG. Gate it.
+    // GatewayButton already appends ?token=, so no client change is needed.
+    if (route.kind === "gateway") {
+      if (!queryTokenOk(req.url, SESSION_TOKEN)) {
+        res.writeHead(401, { "content-type": "text/plain" })
+        return res.end("unauthorized")
+      }
+      return handleGateway(req, res, { routes, sessionToken: SESSION_TOKEN, exposedPort: supervisor.exposedPort })
+    }
     if (route.kind === "static") return serveStatic(res, STATIC_DIR, (req.url || "/").split("?")[0])
 
     // --- app routing: try configured routes first, then supervisor.exposedPort fallback ---
@@ -71,11 +83,18 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
   }
 }
 
-/** Serve the gateway page as the fallback (when no app is up or as a 503 when the app crashed). */
+/** Serve the gateway page as the fallback (when no app is up or as a 503 when the app crashed).
+ *
+ *  Unlike the explicit /_oyren/gateway route this must NOT 401: it is what the user's own app URL
+ *  falls back to, so an unauthenticated visitor should still get a readable "nothing running yet"
+ *  page rather than a bare error. It must equally not leak the session token — plain `/` reaches
+ *  here — so the token is passed only when the request actually proves it already has it, and
+ *  otherwise the page simply renders without its download/logs links (which would be useless to an
+ *  unauthenticated viewer anyway). */
 function showGateway(req, res, { routes, supervisor, status }) {
   return handleGateway(req, res, {
     routes,
-    sessionToken: SESSION_TOKEN,
+    sessionToken: queryTokenOk(req.url, SESSION_TOKEN) ? SESSION_TOKEN : "",
     exposedPort: supervisor.exposedPort,
   })
 }
