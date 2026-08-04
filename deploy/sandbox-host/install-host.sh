@@ -19,7 +19,13 @@ APT="apt-get -o DPkg::Lock::Timeout=300"
 
 echo "==> Base packages"
 $APT update -qq
-$APT install -y -qq --no-install-recommends git tmux ca-certificates curl sudo ripgrep
+# python3/make/g++ are the native toolchain: the session runtime depends on node-pty, which
+# package.json pins under pnpm.onlyBuiltDependencies and therefore COMPILES from source. The
+# container got this from a separate builder stage that never existed on the VM, so without them
+# install-runtime.sh's `pnpm install --prod` fails on the node-pty gyp build.
+$APT install -y -qq --no-install-recommends \
+  git tmux ca-certificates curl sudo ripgrep \
+  python3 make g++
 
 echo "==> GitHub CLI (its own apt repo)"
 if ! command -v gh >/dev/null 2>&1; then
