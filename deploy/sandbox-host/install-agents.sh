@@ -63,6 +63,19 @@ ln -sf "/home/$SANDBOX_USER/.local/bin/cursor-agent" /usr/local/bin/cursor-agent
 
 echo "==> antigravity (+ bun ${BUN_VERSION}, its acp shim needs it)"
 curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
+# The installer ignores --dir and drops the binary in $HOME/.local/bin — which is /root here, a
+# directory the sandbox user cannot read. In the container this was masked because the install ran
+# as `oyren`; on the VM it runs as root, so AGY_BIN would point at a path the agent can't execute.
+if [ ! -x /usr/local/bin/agy ]; then
+  AGY_SRC="$(command -v agy || true)"
+  [ -n "$AGY_SRC" ] || AGY_SRC=/root/.local/bin/agy
+  if [ -x "$AGY_SRC" ]; then
+    install -m 0755 "$AGY_SRC" /usr/local/bin/agy
+    echo "    relocated agy from $AGY_SRC"
+  else
+    echo "    WARNING: agy binary not found — antigravity launches will fail" >&2
+  fi
+fi
 apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends unzip
 curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s -- "$BUN_VERSION"
 apt-get -y -qq purge unzip && apt-get -y -qq autoremove
@@ -72,7 +85,15 @@ HOME=/root pnpm add -g "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
 # reuses one copy instead of downloading ~150MB on first use.
 echo "==> playwright MCP ${PLAYWRIGHT_MCP_VERSION} + chromium"
 HOME=/root npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}"
-PW_CORE=/usr/local/lib/node_modules/@playwright/mcp/node_modules/playwright-core/cli.js
+# The Dockerfile hardcoded .../@playwright/mcp/node_modules/playwright-core/cli.js. That path only
+# exists when npm NESTS the dependency; here it hoists playwright-core to the top level instead and
+# the hardcoded path 404s (this killed a bake). Ask node where it actually is, resolving from the
+# mcp package so we get the copy that package will really load, then fall back to a search.
+PW_MCP_DIR=/usr/local/lib/node_modules/@playwright/mcp
+PW_CORE="$(node -e "console.log(require.resolve('playwright-core/cli.js',{paths:['$PW_MCP_DIR']}))" 2>/dev/null || true)"
+[ -n "$PW_CORE" ] || PW_CORE="$(find /usr/local/lib/node_modules -path '*playwright-core/cli.js' -print -quit)"
+[ -n "$PW_CORE" ] || { echo "ERROR: playwright-core cli.js not found after install" >&2; exit 1; }
+echo "    playwright-core cli: $PW_CORE"
 apt-get -o DPkg::Lock::Timeout=300 update -qq
 HOME=/root node "$PW_CORE" install-deps chromium
 HOME=/root node "$PW_CORE" install --no-shell chromium
