@@ -19,14 +19,17 @@ SNAPSHOT_NAME="oyren-sandbox-droplet-lean-$(date -u +%Y-%m-%d)"
 # DISK SIZE IS THE CONSTRAINT, NOT CPU. DigitalOcean refuses to boot an image onto a droplet whose
 # disk is smaller than the one the image was made on, so the size used HERE sets the minimum size of
 # every future Lean session droplet. Lean is not size-gated (it runs on any tier, default s), so the
-# 25GB floor must be preserved — which rules out the obvious s-2vcpu-4gb (80GB) and friends.
+# 25GB floor must be preserved — which rules out s-2vcpu-4gb (80GB) and every other roomy size.
 #
-# c-2 is the sweet spot: 4GB RAM on a 25GB disk. That keeps the floor at 25GB while giving Mathlib
-# four times the memory of the 1GB base-bake box, for about six cents an hour.
+# In fra1 the ONLY sizes with a 25GB disk are the 1GB s-1vcpu-1gb family. c-2 (4GB RAM / 25GB) looks
+# ideal in the global size list but DigitalOcean rejects it here with
+# "Size is not available in this region" — availability is per-region, and the global list does not
+# say so. Check `/v2/sizes` filtered on `.regions | index("<region>")` before changing this.
 #
-# `lake exe cache get` downloads prebuilt oleans rather than compiling Mathlib from source, so this
-# is mostly I/O; the extra RAM is headroom for `lake build`, not a hard requirement.
-SIZE="${DERIVE_SIZE:-c-2}"
+# 1GB is workable because `lake exe cache get` DOWNLOADS prebuilt oleans rather than compiling
+# Mathlib from source, so the step is I/O-bound, and the snapshot carries a 4GB swapfile. The base
+# image uses 11.5GB of the 25GB disk, leaving ample room for Mathlib's 3-5GB.
+SIZE="${DERIVE_SIZE:-s-1vcpu-1gb}"
 
 echo "▶ booting $NAME from base snapshot $BASE_SNAPSHOT_ID ($SIZE)"
 DROPLET_ID="$(create_droplet "$NAME" "$SIZE" "$BASE_SNAPSHOT_ID" "$DO_SSH_KEY_ID" "$DO_REGION")"

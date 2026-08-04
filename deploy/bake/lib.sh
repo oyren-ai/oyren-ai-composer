@@ -33,11 +33,20 @@ do_api() {
 # create_droplet <name> <size> <image> <ssh_key_id> <region> — prints the new droplet's id.
 # tonumber? lets DO_SSH_KEY_ID be either a numeric id or a fingerprint (DO accepts both).
 create_droplet() {
-  local name="$1" size="$2" image="$3" key="$4" region="$5"
-  do_api POST /droplets "$(jq -n --arg n "$name" --arg s "$size" --arg i "$image" \
-    --arg k "$key" --arg r "$region" \
-    '{name:$n, size:$s, image:$i, region:$r, ssh_keys:[($k|tonumber? // $k)], tags:["oyren-bake"]}')" \
-    | jq -r '.droplet.id'
+  local name="$1" size="$2" image="$3" key="$4" region="$5" body resp
+  body="$(jq -n --arg n "$name" --arg s "$size" --arg i "$image" --arg k "$key" --arg r "$region" \
+    '{name:$n, size:$s, image:$i, region:$r, ssh_keys:[($k|tonumber? // $k)], tags:["oyren-bake"]}')"
+  # NOT do_api here: its `curl -fsS` hides the response body on an error status, which turned a
+  # "Size is not available in this region" into a bare `curl: (22)`. Surface DO's message instead.
+  resp="$(curl -sS -X POST -H "Authorization: Bearer $DO_API_TOKEN" \
+    -H "Content-Type: application/json" -d "$body" "$DO_API/droplets")"
+  local id
+  id="$(printf '%s' "$resp" | jq -r '.droplet.id // empty')"
+  if [ -z "$id" ]; then
+    echo "ERROR: droplet create failed: $(printf '%s' "$resp" | jq -r '.message // .' | head -c 300)" >&2
+    return 1
+  fi
+  printf '%s\n' "$id"
 }
 
 # wait_droplet_active <id> — poll until the droplet reports "active" (~5 min cap: 60 x 5s).
