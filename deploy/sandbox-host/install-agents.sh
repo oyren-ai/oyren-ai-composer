@@ -85,13 +85,18 @@ HOME=/root pnpm add -g "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
 # reuses one copy instead of downloading ~150MB on first use.
 echo "==> playwright MCP ${PLAYWRIGHT_MCP_VERSION} + chromium"
 HOME=/root npm install -g "@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}"
-# The Dockerfile hardcoded .../@playwright/mcp/node_modules/playwright-core/cli.js. That path only
-# exists when npm NESTS the dependency; here it hoists playwright-core to the top level instead and
-# the hardcoded path 404s (this killed a bake). Ask node where it actually is, resolving from the
-# mcp package so we get the copy that package will really load, then fall back to a search.
-PW_MCP_DIR=/usr/local/lib/node_modules/@playwright/mcp
+# The Dockerfile hardcoded /usr/local/lib/node_modules/@playwright/mcp/node_modules/playwright-core/
+# cli.js. TWO assumptions in that path break on a VM, and each killed a bake:
+#   1. the prefix — node:24 images use /usr/local, but NodeSource Ubuntu installs globals under
+#      /usr, so the directory did not exist at all;
+#   2. the nesting — npm hoists playwright-core to the global root here rather than nesting it
+#      under the mcp package.
+# So resolve both dynamically: ask npm for its global root, then ask node where the mcp package
+# would actually load playwright-core from, with a search as the last resort.
+NPM_ROOT="$(npm root -g)"
+PW_MCP_DIR="$NPM_ROOT/@playwright/mcp"
 PW_CORE="$(node -e "console.log(require.resolve('playwright-core/cli.js',{paths:['$PW_MCP_DIR']}))" 2>/dev/null || true)"
-[ -n "$PW_CORE" ] || PW_CORE="$(find /usr/local/lib/node_modules -path '*playwright-core/cli.js' -print -quit)"
+[ -n "$PW_CORE" ] || PW_CORE="$(find "$NPM_ROOT" -path '*playwright-core/cli.js' -print -quit 2>/dev/null || true)"
 [ -n "$PW_CORE" ] || { echo "ERROR: playwright-core cli.js not found after install" >&2; exit 1; }
 echo "    playwright-core cli: $PW_CORE"
 apt-get -o DPkg::Lock::Timeout=300 update -qq
