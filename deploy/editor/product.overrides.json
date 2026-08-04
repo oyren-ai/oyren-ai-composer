@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Branding overrides merged into openvscode-server's product.json by install-editor.sh.",
+    "Code-OSS is MIT, which permits rebranding; rebranding is also how we stop shipping Microsoft's",
+    "trademarks, which we are NOT licensed to use. Only display strings and links are overridden.",
+    "",
+    "Deliberately NOT overridden:",
+    "  extensionsGallery      - must stay Open VSX. Pointing a non-Microsoft product at the VS Code",
+    "                           Marketplace violates its terms of use.",
+    "  dataFolderName /       - these decide where the server writes its data. Renaming them moves",
+    "  serverDataFolderName     ~/.openvscode-server, which is exactly where install-editor.sh seeds",
+    "                           the machine settings, so they must move together or not at all.",
+    "  applicationName        - the CLI binary and its bundled helper scripts resolve by this name.",
+    "",
+    "Keys starting with _ are stripped before merging."
+  ],
+  "nameShort": "Oyren",
+  "nameLong": "Oyren Editor",
+  "reportIssueUrl": "https://oyren.ai/contact",
+  "documentationUrl": "https://oyren.ai/guides",
+  "licenseUrl": "https://oyren.ai/terms",
+  "privacyStatementUrl": "https://oyren.ai/privacy",
+  "releaseNotesUrl": "https://oyren.ai",
+  "requestFeatureUrl": "https://oyren.ai/contact",
+  "twitterUrl": "",
+  "introductoryVideosUrl": "",
+  "tipsAndTricksUrl": "",
+  "newsletterSignupUrl": ""
+}

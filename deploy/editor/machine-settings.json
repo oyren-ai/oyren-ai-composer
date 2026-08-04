@@ -1,0 +1,30 @@
+{
+  "window.title": "${dirty}${activeEditorShort}${separator}${rootName}${separator}Oyren",
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#0a0a0a",
+    "titleBar.inactiveBackground": "#0a0a0a",
+    "titleBar.activeForeground": "#fafafa",
+    "activityBar.background": "#0a0a0a",
+    "activityBar.foreground": "#fafafa",
+    "activityBarBadge.background": "#fafafa",
+    "activityBarBadge.foreground": "#0a0a0a",
+    "statusBar.background": "#171717",
+    "statusBar.foreground": "#a3a3a3",
+    "statusBar.noFolderBackground": "#171717",
+    "statusBar.debuggingBackground": "#171717",
+    "statusBarItem.remoteBackground": "#262626",
+    "statusBarItem.remoteForeground": "#fafafa"
+  },
+
+  "chat.commandCenter.enabled": false,
+  "chat.agent.enabled": false,
+
+  "security.workspace.trust.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "workbench.startupEditor": "none",
+
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 800
+}

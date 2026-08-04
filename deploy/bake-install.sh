@@ -33,6 +33,13 @@ cd "$APP_DIR"
 npm ci
 npm run build
 
+# The browser editor, baked in so a launching droplet starts it without downloading ~200MB first.
+# Sandbox lane only: the edge and build lanes never serve an editor, and INSTALL_EDITOR=0 skips it
+# for a slimmer bake. Runs after the Node install above, which the product.json rebrand depends on.
+if [ "${INSTALL_EDITOR:-1}" = "1" ]; then
+  bash "$APP_DIR/deploy/editor/install-editor.sh"
+fi
+
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"
 cp "$APP_DIR"/deploy/units/oyren-sandbox.service \
    "$APP_DIR"/deploy/units/oyren-build.service \
