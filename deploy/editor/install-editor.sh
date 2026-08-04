@@ -65,4 +65,27 @@ install -m 0644 "$HERE/machine-settings.json" "$SETTINGS_DIR/settings.json"
 
 chown -R "$EDITOR_USER:$EDITOR_USER" "$INSTALL_DIR" "$EDITOR_HOME/.openvscode-server"
 
+# Anthropic's own VS Code extension, from Open VSX. NEVER Microsoft's Marketplace: its terms of use
+# forbid non-Microsoft products, which is also why product.json's extensionsGallery is left alone.
+#
+# It fits here specifically because it declares extensionKind:["workspace"] and ships a linux-x64
+# build — meaning it runs in the SERVER-side Node extension host, which is what openvscode-server
+# provides, rather than the browser sandbox that vscode.dev imposes. Running agents directly on the
+# droplet helps twice over: the extension lands on the same filesystem and PATH as the `claude`
+# binary install-agents.sh put there, and as the session's own credentials.
+#
+# Non-fatal on purpose. A registry hiccup must not sink a 15-minute bake, and the oyren chat pane
+# remains the shipping surface either way.
+if [ "${INSTALL_CLAUDE_EXTENSION:-1}" = "1" ]; then
+  echo "==> Claude Code extension (Open VSX)"
+  install_ext() { su - "$EDITOR_USER" -c "'$INSTALL_DIR/bin/openvscode-server' --install-extension '$1'"; }
+  # Open VSX publishes the namespace as "Anthropic"; VS Code ids are conventionally lowercased.
+  # Try the canonical id first, then the namespace-cased form, before giving up.
+  if install_ext anthropic.claude-code || install_ext Anthropic.claude-code; then
+    echo "    installed"
+  else
+    echo "    WARNING: claude-code extension unavailable — editor and chat pane are unaffected" >&2
+  fi
+fi
+
 echo "✅ Oyren Editor installed (openvscode-server v${OPENVSCODE_VERSION}, user=${EDITOR_USER})"

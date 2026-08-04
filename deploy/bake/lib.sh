@@ -70,6 +70,27 @@ wait_ssh() {
   return 1
 }
 
+# retry <attempts> <delay-seconds> <command...> — re-run a flaky command.
+#
+# A freshly booted droplet accepts SSH before it has settled: sshd starts, then cloud-init
+# reconfigures or restarts it, and an in-flight transfer dies with
+# "kex_exchange_identification: Connection reset by peer". wait_ssh cannot prevent this — its probe
+# genuinely succeeded moments earlier. A bake costs 15+ minutes, so losing one to a two-second race
+# is not acceptable.
+retry() {
+  local attempts="$1" delay="$2"; shift 2
+  local i
+  for i in $(seq 1 "$attempts"); do
+    "$@" && return 0
+    if [ "$i" -eq "$attempts" ]; then
+      echo "ERROR: command failed after $attempts attempts: $*" >&2
+      return 1
+    fi
+    echo "  attempt $i failed; retrying in ${delay}s…" >&2
+    sleep "$delay"
+  done
+}
+
 # run_remote <ip> <script-path> — stream a local script into `bash -s` as root on the droplet
 # (nothing is copied to its disk).
 run_remote() {
