@@ -33,10 +33,15 @@ cd "$APP_DIR"
 npm ci
 npm run build
 
-# The browser editor, baked in so a launching droplet starts it without downloading ~200MB first.
-# Sandbox lane only: the edge and build lanes never serve an editor, and INSTALL_EDITOR=0 skips it
-# for a slimmer bake. Runs after the Node install above, which the product.json rebrand depends on.
-if [ "${INSTALL_EDITOR:-1}" = "1" ]; then
+# Everything the SANDBOX lane needs on the VM itself, because agents now run on the droplet rather
+# than inside a container: the host packages + oyren user, every agent CLI, and the branded editor.
+# Order matters — install-host.sh creates the user and pnpm that the other two rely on, and all
+# three need the Node install above.
+# The edge and build lanes want none of it (an edge host is a 1GB Caddy box), so SANDBOX_HOST=0
+# skips the lot and keeps those bakes small and fast.
+if [ "${SANDBOX_HOST:-1}" = "1" ]; then
+  bash "$APP_DIR/deploy/sandbox-host/install-host.sh"
+  bash "$APP_DIR/deploy/sandbox-host/install-agents.sh"
   bash "$APP_DIR/deploy/editor/install-editor.sh"
 fi
 

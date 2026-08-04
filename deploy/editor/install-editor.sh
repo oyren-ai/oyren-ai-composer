@@ -47,9 +47,15 @@ NODE
 
 # Machine-level settings live under the EDITOR_USER's home, at the path openvscode derives from
 # product.json's serverDataFolderName — which is why that key is deliberately left alone.
+# The VM is a bare Ubuntu image: the `oyren` user only ever existed inside the sandbox container,
+# so create it here. Agents run as this user on the droplet, and it owns the editor and its data.
+if ! getent passwd "$EDITOR_USER" >/dev/null; then
+  echo "==> creating user $EDITOR_USER"
+  useradd --create-home --shell /bin/bash "$EDITOR_USER"
+fi
 EDITOR_HOME="$(getent passwd "$EDITOR_USER" | cut -d: -f6)"
 if [ -z "$EDITOR_HOME" ]; then
-  echo "ERROR: user '$EDITOR_USER' does not exist — create it before installing the editor" >&2
+  echo "ERROR: user '$EDITOR_USER' has no home directory" >&2
   exit 1
 fi
 SETTINGS_DIR="$EDITOR_HOME/.openvscode-server/data/Machine"
