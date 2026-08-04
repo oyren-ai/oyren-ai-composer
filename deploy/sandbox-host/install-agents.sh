@@ -29,6 +29,13 @@ export PNPM_HOME="${PNPM_HOME:-/usr/local/share/pnpm}"
 export PATH="$PNPM_HOME:$PATH"
 export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# The bake runs on a 1GB droplet — its 25GB disk is what caps the minimum session droplet size, so
+# it cannot simply be given more RAM. V8 sizes its default heap from physical memory and lands at
+# ~490MB there, which installing claude-code alone exceeds; the first bake died exactly there.
+# The 4GB swapfile does NOT help on its own: max-old-space-size is a hard V8 ceiling enforced
+# regardless of available memory. Raise the ceiling and let swap absorb anything past physical RAM.
+export NODE_OPTIONS="--max-old-space-size=3072${NODE_OPTIONS:+ $NODE_OPTIONS}"
+
 # HOME=/root keeps pnpm's store and logs out of the sandbox user's home, where they would otherwise
 # land root-owned and break the agent's first write.
 pg() { HOME=/root pnpm add -g --allow-build="$1" "$1@$2"; }
