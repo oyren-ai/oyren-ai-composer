@@ -42,6 +42,7 @@ npm run build
 if [ "${SANDBOX_HOST:-1}" = "1" ]; then
   bash "$APP_DIR/deploy/sandbox-host/install-host.sh"
   bash "$APP_DIR/deploy/sandbox-host/install-agents.sh"
+  bash "$APP_DIR/deploy/sandbox-host/install-runtime.sh"
   bash "$APP_DIR/deploy/editor/install-editor.sh"
 fi
 

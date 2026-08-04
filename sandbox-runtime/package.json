@@ -1,0 +1,23 @@
+{
+  "name": "oyren-sandbox",
+  "version": "1.0.0",
+  "description": "Single-port sandbox container: reverse proxy + token-gated tmux terminal + static how-to-deploy page + app supervisor. Merges repo-terminal and app-runner.",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.219",
+    "node-pty": "^1.0.0",
+    "tsx": "4.22.4",
+    "ws": "^8.18.0",
+    "yaml": "2.9.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "node-pty"
+    ]
+  }
+}
