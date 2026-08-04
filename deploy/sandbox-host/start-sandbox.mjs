@@ -9,23 +9,13 @@
 // Decoding here and exec'ing with a merged env keeps every value byte-exact, and keeps the secrets
 // out of the process table (they are never argv).
 import { spawn } from 'node:child_process'
+import { mergedEnv } from './sessionEnv.mjs'
 
 const ENTRYPOINT = process.env.OYREN_ENTRYPOINT ?? '/app/entrypoint.sh'
 
-function sessionEnv() {
-  const b64 = process.env.CONTAINER_ENV_B64 ?? ''
-  if (!b64) return {}
-  const parsed = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'))
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('CONTAINER_ENV_B64 must decode to a JSON object')
-  }
-  return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v)]))
-}
-
-const env = { ...process.env, ...sessionEnv() }
-// Don't hand the blob down: the entrypoint has the decoded vars, and anything spawned later
-// (the agent, the user's shell) has no reason to see a second copy of every secret.
-delete env.CONTAINER_ENV_B64
+// Decoded session env, minus the blob itself — the entrypoint has the vars, and anything spawned
+// later (the agent, the user's shell) has no reason to see a second copy of every secret.
+const env = mergedEnv()
 
 const child = spawn(ENTRYPOINT, { stdio: 'inherit', env })
 child.on('error', (err) => {
