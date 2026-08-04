@@ -25,6 +25,7 @@ const { handleRunsPage } = require("./runsPage")
 const { handleGateway } = require("./gateway")
 const { STATIC_DIR, SESSION_TOKEN } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
+const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
 
 function createRouter({ supervisor, workdir, controlToken, routes }) {
   return function handle(req, res) {
@@ -57,6 +58,27 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
         return res.end("unauthorized")
       }
       return handleGateway(req, res, { routes, sessionToken: SESSION_TOKEN, exposedPort: supervisor.exposedPort })
+    }
+    if (route.kind === "ide") {
+      if (!ideAuth(req.url, SESSION_TOKEN)) {
+        res.writeHead(401, { "content-type": "text/plain" })
+        return res.end("unauthorized")
+      }
+      // webClientServer prefers an x-forwarded-prefix header over --server-base-path when building
+      // the workbench's asset and WS URLs. proxyHttp forwards client headers verbatim, so a
+      // caller-supplied one would rewrite those URLs out from under us. Drop it.
+      delete req.headers["x-forwarded-prefix"]
+      const redirect = ideFolderRedirect(req.url, workdir)
+      if (redirect) {
+        res.writeHead(302, { location: redirect })
+        return res.end()
+      }
+      // NO url rewrite: openvscode is started with --server-base-path covering this whole prefix,
+      // so it expects to receive the full path. Stripping it would break every generated asset URL.
+      return proxyHttp(req, res, IDE_PORT, () => {
+        res.writeHead(503, { "content-type": "text/plain" })
+        res.end("editor starting…")
+      })
     }
     if (route.kind === "static") return serveStatic(res, STATIC_DIR, (req.url || "/").split("?")[0])
 

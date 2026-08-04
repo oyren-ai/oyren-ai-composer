@@ -11,6 +11,7 @@ const { Routes } = require("./routes")
 const { setupTerminal } = require("./terminal")
 const { wsRouteFor } = require("./routeFor")
 const { proxyWs } = require("./proxyWs")
+const { IDE_PORT, ideAuth } = require("./ide")
 const { seedClaudeAuth } = require("./seedClaudeAuth")
 const { seedClaudeSettings } = require("./seedClaudeSettings")
 const { seedCursorSettings } = require("./seedCursorSettings")
@@ -88,6 +89,17 @@ server.on("upgrade", safeUpgrade((req, socket, head) => {
       return socket.destroy()
     }
     return termWss.handleUpgrade(req, socket, head, (ws) => termWss.emit("connection", ws, req))
+  }
+  if (route.kind === "ide") {
+    // The token is in the PATH here, not the query: openvscode's client builds this URL from its
+    // --server-base-path and only puts reconnectionToken in the query string.
+    if (!ideAuth(req.url, cfg.SESSION_TOKEN)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
+      return socket.destroy()
+    }
+    // proxyWs replays the ORIGINAL url (unlike proxyHttp, which rewrites it to the stripped
+    // downstream path) — which is exactly what the editor needs, since its base path must survive.
+    return proxyWs(req, socket, head, IDE_PORT)
   }
   // WebSocket: try routes first, then supervisor.exposedPort
   if (routes) {

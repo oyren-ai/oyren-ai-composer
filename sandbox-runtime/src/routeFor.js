@@ -20,6 +20,9 @@ function routeFor(rawUrl) {
   if (path === "/_oyren/runs.html") return { kind: "runs-page" }
   if (isUnder(path, "/_oyren/runs")) return { kind: "runs" }
   if (isUnder(path, "/_oyren/gateway")) return { kind: "gateway" }
+  // The browser IDE. Reserved rather than served from a "/" route so that a format app's
+  // `oyren route add / <port>` cannot evict it mid-session — see ide.js for the full reasoning.
+  if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
   if (isUnder(path, "/agent/current")) return { kind: "agent-current" }
   if (isUnder(path, "/agent/stream")) return { kind: "agent-stream" }
   if (isUnder(path, "/agent/interrupt")) return { kind: "agent-interrupt" }
@@ -34,6 +37,8 @@ function routeFor(rawUrl) {
 function wsRouteFor(rawUrl) {
   const path = pathOf(rawUrl)
   if (isUnder(path, "/terminal")) return { kind: "terminal" }
+  // The editor's own WebSocket (workbench ↔ extension host) lives under its base path.
+  if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
   return { kind: "app" }
 }
 
