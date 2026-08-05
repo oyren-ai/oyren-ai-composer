@@ -19,7 +19,25 @@ function activate(context) {
   out.appendLine(`vscode.version=${vscode.version}`);
   out.appendLine(`vscode.chat=${typeof vscode.chat}`);
   out.appendLine(`createChatParticipant=${typeof (vscode.chat && vscode.chat.createChatParticipant)}`);
-  // Also proves whether the extension host inherits the session env — the real participant needs
+
+  // The DROPDOWN question, which is a different API from the @participant one. Picking an agent
+  // (opencode / cursor / codex / …) from the chat input's picker means contributing language-model
+  // providers, not participants — so probe those entry points too rather than spending a second
+  // bake to learn the name of a function.
+  const lm = vscode.lm;
+  out.appendLine(`vscode.lm=${typeof lm}`);
+  for (const fn of ["registerLanguageModelChatProvider", "registerChatModelProvider", "selectChatModels"]) {
+    out.appendLine(`  lm.${fn}=${typeof (lm && lm[fn])}`);
+  }
+
+  // Whether the Chat view is Copilot-gated is the decisive unknown: if the picker only appears when
+  // Copilot is installed, none of this works for us (Copilot isn't on Open VSX, and we don't want
+  // it). Record what the build thinks its default chat agent is.
+  const ext = vscode.extensions;
+  const copilot = ext && (ext.getExtension("GitHub.copilot") || ext.getExtension("GitHub.copilot-chat"));
+  out.appendLine(`copilot installed=${copilot ? "YES" : "no"}`);
+
+  // Also proves whether the extension host inherits the session env — the real integration needs
   // SESSION_TOKEN to call /agent/message, so learning this now saves a whole bake later.
   out.appendLine(`SESSION_TOKEN=${process.env.SESSION_TOKEN ? "present" : "ABSENT"}`);
 
