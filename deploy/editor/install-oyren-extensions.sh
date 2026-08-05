@@ -28,10 +28,10 @@ install_local_ext() {
   echo "    $1"
 }
 
-# STEP 1 of docs/oyren-chat-participant.md: a throwaway participant that proves this build renders
-# the Chat view at all. Default ON so a bake answers the question; set INSTALL_CHAT_PROBE=0 once the
-# real participant ships and this folder is deleted.
-if [ "${INSTALL_CHAT_PROBE:-1}" = "1" ]; then
+# The STEP-1 probe, kept for manual debugging only. Default OFF now that oyren-agent-extension
+# ships: both declare an isDefault participant, and two defaults make the workbench's pick between
+# them an implementation detail rather than a decision.
+if [ "${INSTALL_CHAT_PROBE:-0}" = "1" ]; then
   echo "==> Oyren chat probe (local, unpacked)"
   install_local_ext oyren-chat-probe
 fi

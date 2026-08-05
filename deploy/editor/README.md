@@ -42,14 +42,23 @@ Self-hosting behind your own authenticating proxy, set `OYREN_EDITOR_BASE_PATH` 
 empty to serve at the root). That waives the token check — **your proxy is then the only thing
 between the internet and a root-capable IDE with an integrated terminal.** Do not expose port 3131.
 
-## Copilot is removed, not merely absent
+## Copilot removal happens in the FORK, not here
 
-openvscode-server ships no Copilot extension. But `product.json` carries `defaultChatAgent`, added
-upstream between 1.105 and 1.106, and it makes the workbench advertise a Copilot that cannot exist —
-setup prompts, GitHub sign-in, entitlement checks (gitpod-io/openvscode-server#643).
+openvscode-server ships no Copilot extension, but `product.json` carries `defaultChatAgent` (added
+upstream between 1.105 and 1.106), which makes the workbench advertise a Copilot that cannot exist —
+setup prompts, GitHub sign-in, and a built-in `setup.chat` agent that intercepts every Chat request
+before any extension participant is consulted (gitpod-io/openvscode-server#643).
 
-`product.overrides.json` deletes it, along with `trustedExtensionAuthAccess`. A `null` in that file
-means *delete the key*, not *set it to null*: several workbench checks test for presence.
+Editing the installed `product.json` CANNOT fix that: the reh-web build inlines product.json into
+the workbench bundle at build time, and the server hands the browser an almost-empty runtime
+`productConfiguration`. We learned this the empirical way. The real removal is four small patches in
+our fork — `github.com/oyren-ai/openvscode-server`, branch `oyren/1.109` — whose releases this
+installer downloads whenever `OPENVSCODE_VERSION` contains `-oyren.`; a stock version string still
+pulls Gitpod's build.
+
+`product.overrides.json` still deletes the key at install time (a `null` there means *delete*, not
+*set to null*) — that covers server-side readers and is harmless, but it is belt-and-braces, not
+the fix.
 
 `extensionsGallery` is deliberately left pointing at **Open VSX**. Pointing a non-Microsoft product
 at the VS Code Marketplace violates its terms of use, so do not "fix" that.

@@ -10,9 +10,10 @@
 # Idempotent: re-running upgrades in place. Safe to call from a re-bake.
 #
 # Env:
-#   OPENVSCODE_VERSION  pinned release (bump deliberately — see README)
-#   EDITOR_USER         unix user that owns and runs the editor (default: oyren)
-#   INSTALL_DIR         where the server lands (default: /opt/openvscode-server)
+#   OPENVSCODE_VERSION       pinned release (bump deliberately — see README)
+#   OPENVSCODE_DOWNLOAD_BASE releases base URL; derived from the version unless overridden
+#   EDITOR_USER              unix user that owns and runs the editor (default: oyren)
+#   INSTALL_DIR              where the server lands (default: /opt/openvscode-server)
 set -euo pipefail
 
 OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5}"
@@ -20,8 +21,18 @@ EDITOR_USER="${EDITOR_USER:-oyren}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/openvscode-server}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# An "-oyren." version comes from our fork's releases, anything else from gitpod's — the fork carries
+# the chat patches (a stock build's Chat view intercepts every turn with a Copilot setup agent that
+# is INLINED into the workbench bundle at build time; no runtime product.json edit can reach it,
+# which is why those patches exist). One env var overrides for mirrors/air-gapped installs.
+case "$OPENVSCODE_VERSION" in
+  *-oyren.*) DEFAULT_BASE="https://github.com/oyren-ai/openvscode-server/releases/download" ;;
+  *)         DEFAULT_BASE="https://github.com/gitpod-io/openvscode-server/releases/download" ;;
+esac
+OPENVSCODE_DOWNLOAD_BASE="${OPENVSCODE_DOWNLOAD_BASE:-$DEFAULT_BASE}"
+
 TARBALL="openvscode-server-v${OPENVSCODE_VERSION}-linux-x64"
-URL="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${OPENVSCODE_VERSION}/${TARBALL}.tar.gz"
+URL="${OPENVSCODE_DOWNLOAD_BASE}/openvscode-server-v${OPENVSCODE_VERSION}/${TARBALL}.tar.gz"
 
 echo "==> openvscode-server v${OPENVSCODE_VERSION} -> ${INSTALL_DIR}"
 rm -rf "$INSTALL_DIR" "/opt/${TARBALL}"
