@@ -46,10 +46,18 @@ if [ -n "${ORCHESTRATOR_URL:-}" ] && [ -n "${OYREN_SESSION_SLUG:-}" ] && [ -n "$
   body="{\"appSlug\":\"${OYREN_SESSION_SLUG}\",\"controlToken\":\"${CONTROL_TOKEN}\""
   [ -n "$repo_full_name" ] && body="${body},\"repoFullName\":\"${repo_full_name}\""
   body="${body}}"
-  resp="$(curl -fsS --max-time 10 -X POST "${ORCHESTRATOR_URL}/sandbox/git-token" \
-    -H 'content-type: application/json' \
-    --data-raw "$body" 2>/dev/null || true)"
-  token="$(printf '%s' "$resp" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  # Retried, because falling through is silently destructive: past the first hour the fallback token
+  # is EXPIRED, so one blip here turns into a bare 403 from GitHub with nothing pointing at the real
+  # cause. Two quick extra attempts cost a couple of seconds on a git op that was going to fail
+  # anyway, and cover the restart/redeploy window that makes the orchestrator briefly unreachable.
+  for _attempt in 1 2 3; do
+    resp="$(curl -fsS --max-time 10 -X POST "${ORCHESTRATOR_URL}/sandbox/git-token" \
+      -H 'content-type: application/json' \
+      --data-raw "$body" 2>/dev/null || true)"
+    token="$(printf '%s' "$resp" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    [ -n "$token" ] && break
+    [ "$_attempt" -lt 3 ] && sleep 2
+  done
 fi
 
 # 2. Match a per-repo token from REPO_CLONE_TOKENS (parallel list to REPO_FULL_NAMES, comma-separated).

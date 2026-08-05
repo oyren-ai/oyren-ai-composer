@@ -18,12 +18,18 @@ set -u
 
 token=""
 
-# 1. Fresh token from the orchestrator.
+# 1. Fresh token from the orchestrator. Retried for the same reason as git-credential-oyren.sh:
+#    past the first hour the fallback token is expired, so a single transient failure here surfaces
+#    as an unexplained 403 rather than as the connectivity problem it actually is.
 if [ -n "${ORCHESTRATOR_URL:-}" ] && [ -n "${OYREN_SESSION_SLUG:-}" ] && [ -n "${CONTROL_TOKEN:-}" ]; then
-  resp="$(curl -fsS --max-time 10 -X POST "${ORCHESTRATOR_URL}/sandbox/git-token" \
-    -H 'content-type: application/json' \
-    --data-raw "{\"appSlug\":\"${OYREN_SESSION_SLUG}\",\"controlToken\":\"${CONTROL_TOKEN}\"}" 2>/dev/null || true)"
-  token="$(printf '%s' "$resp" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+  for _attempt in 1 2 3; do
+    resp="$(curl -fsS --max-time 10 -X POST "${ORCHESTRATOR_URL}/sandbox/git-token" \
+      -H 'content-type: application/json' \
+      --data-raw "{\"appSlug\":\"${OYREN_SESSION_SLUG}\",\"controlToken\":\"${CONTROL_TOKEN}\"}" 2>/dev/null || true)"
+    token="$(printf '%s' "$resp" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    [ -n "$token" ] && break
+    [ "$_attempt" -lt 3 ] && sleep 2
+  done
 fi
 
 # 2. Per-repo token from REPO_CLONE_TOKENS, keyed by the repo the current directory belongs to.
