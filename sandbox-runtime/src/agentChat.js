@@ -10,6 +10,7 @@ const engine = require("./engineSelect")
 const broadcast = require("./agentBroadcast")
 const { startKeepalive } = require("./agentKeepalive")
 const { json, tokenOk, readBody } = require("./agentHttp")
+const { maybeHandleSideMessage } = require("./sideEngineHttp")
 
 // Body is one stream-json `user` line (frontend encodeUserMessage) or a raw prompt string. Prefer the full
 // content-block array (carries image blocks) so vision works natively; fall back to joined text.
@@ -80,6 +81,9 @@ async function handleAgentMessage(req, res) {
   if (!tokenOk(req.url)) return json(res, 401, { error: "unauthorized" })
   const { payload, turnId, clientMsgId, displayText } = extractMessage(await readBody(req))
   if (!payload) return turnId ? replay(res, turnId) : json(res, 400, { error: "empty or unparseable message" })
+  // ?agent=<kind>: a SIDE engine's turn — streamed to this caller only, never echoed into the
+  // broadcast (the pane's feed belongs to the launch agent).
+  if (maybeHandleSideMessage(req, res, payload)) return
   echoUserMessage(payload, clientMsgId, displayText)
   if (wantsFollow(req.url)) return follow(res, payload, turnId)
   try { await engine.send(payload, turnId); return json(res, 202, { ok: true }) } // fire-and-forget; output on /agent/stream
