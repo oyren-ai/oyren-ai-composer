@@ -17,8 +17,8 @@
     "statusBarItem.remoteForeground": "#fafafa"
   },
 
-  "chat.commandCenter.enabled": false,
-  "chat.agent.enabled": false,
+  "chat.commandCenter.enabled": true,
+  "chat.agent.enabled": true,
 
   "security.workspace.trust.enabled": false,
   "telemetry.telemetryLevel": "off",

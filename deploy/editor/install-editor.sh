@@ -88,4 +88,8 @@ if [ "${INSTALL_CLAUDE_EXTENSION:-1}" = "1" ]; then
   fi
 fi
 
+# Oyren's own first-party extensions — kept in their own script because this one installs a VENDOR
+# server and that is a different job with a different failure mode.
+EDITOR_USER="$EDITOR_USER" INSTALL_DIR="$INSTALL_DIR" "$HERE/install-oyren-extensions.sh"
+
 echo "✅ Oyren Editor installed (openvscode-server v${OPENVSCODE_VERSION}, user=${EDITOR_USER})"

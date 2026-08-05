@@ -1,0 +1,30 @@
+{
+  "name": "oyren-chat-probe",
+  "displayName": "Oyren Chat Probe",
+  "description": "Throwaway probe: proves this openvscode build renders the Chat view and loads chatParticipants.",
+  "version": "0.0.1",
+  "publisher": "oyren",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "oyren.probe",
+        "name": "probe",
+        "fullName": "Oyren Probe",
+        "description": "Answers 'probe ok' — proves chatParticipants load on this build.",
+        "isSticky": true
+      }
+    ]
+  }
+}
