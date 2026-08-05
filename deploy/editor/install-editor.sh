@@ -37,12 +37,22 @@ const fs = require('node:fs')
 const [, , productPath, overridesPath] = process.argv
 const product = JSON.parse(fs.readFileSync(productPath, 'utf8'))
 const overrides = JSON.parse(fs.readFileSync(overridesPath, 'utf8'))
+const removed = []
 for (const [key, value] of Object.entries(overrides)) {
   if (key.startsWith('_')) continue // documentation keys, not product fields
+  // null means DELETE, not "set to null". Some workbench checks are `key in product` or truthiness
+  // of a nested field, so leaving a null behind is not the same as the key being absent — and
+  // absent is what we need for defaultChatAgent.
+  if (value === null) {
+    if (key in product) removed.push(key)
+    delete product[key]
+    continue
+  }
   product[key] = value
 }
 fs.writeFileSync(productPath, `${JSON.stringify(product, null, 2)}\n`)
 console.log(`    nameLong=${product.nameLong} gallery=${product.extensionsGallery ? 'preserved' : 'ABSENT'}`)
+console.log(`    removed=${removed.length ? removed.join(',') : '(none)'}`)
 NODE
 
 # Machine-level settings live under the EDITOR_USER's home, at the path openvscode derives from

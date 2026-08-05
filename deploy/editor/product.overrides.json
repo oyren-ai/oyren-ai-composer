@@ -12,7 +12,8 @@
     "                           the machine settings, so they must move together or not at all.",
     "  applicationName        - the CLI binary and its bundled helper scripts resolve by this name.",
     "",
-    "Keys starting with _ are stripped before merging."
+    "Keys starting with _ are stripped before merging. A key set to null is DELETED from product.json",
+    "rather than set to null — see defaultChatAgent below."
   ],
   "nameShort": "Oyren",
   "nameLong": "Oyren Editor",
@@ -25,5 +26,22 @@
   "twitterUrl": "",
   "introductoryVideosUrl": "",
   "tipsAndTricksUrl": "",
-  "newsletterSignupUrl": ""
+  "newsletterSignupUrl": "",
+
+  "_comment.defaultChatAgent": [
+    "GitHub Copilot. This key names the chat agent the workbench sets itself up for, and it is what",
+    "puts 'Set up Copilot' prompts, GitHub sign-in and Copilot entitlement checks into a build that",
+    "has no Copilot in it. It landed in the OSS product.json between 1.105 and 1.106, which is why",
+    "Copilot suddenly appears on Code-OSS servers (gitpod-io/openvscode-server#643).",
+    "",
+    "Removing it is the targeted fix, and it is safe HERE specifically: openvscode-server 1.109.5",
+    "ships no Copilot extension at all (extensions/copilot is empty in release/1.109), so nothing",
+    "in this tree can satisfy the entitlement anyway. It also clears the way for our own extension",
+    "to register as the default chat participant.",
+    "",
+    "trustedExtensionAuthAccess goes for the same reason: it pre-authorises Copilot's extensions to",
+    "take GitHub auth sessions without asking."
+  ],
+  "defaultChatAgent": null,
+  "trustedExtensionAuthAccess": null
 }

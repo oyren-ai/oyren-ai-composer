@@ -1,8 +1,8 @@
 {
   "name": "oyren-chat-probe",
   "displayName": "Oyren Chat Probe",
-  "description": "Throwaway probe: proves this openvscode build renders the Chat view and loads chatParticipants.",
-  "version": "0.0.1",
+  "description": "Spike: does this Copilot-free build render the Chat view for a third-party default participant?",
+  "version": "0.0.2",
   "publisher": "oyren",
   "private": true,
   "license": "UNLICENSED",
@@ -16,14 +16,28 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "_comment.enabledApiProposals": [
+    "isDefault + modes need these proposals at 1.109. They are matched against the launcher's",
+    "--enable-proposed-api oyren.oyren-chat-probe (see deploy/sandbox-host/start-editor.mjs).",
+    "Do NOT move this list into product.json's extensionEnabledApiProposals: that key OVERRIDES an",
+    "extension's own declaration rather than merging with it."
+  ],
+  "enabledApiProposals": [
+    "defaultChatParticipant",
+    "chatProvider"
+  ],
   "contributes": {
     "chatParticipants": [
       {
         "id": "oyren.probe",
-        "name": "probe",
-        "fullName": "Oyren Probe",
-        "description": "Answers 'probe ok' — proves chatParticipants load on this build.",
-        "isSticky": true
+        "name": "oyren",
+        "fullName": "Oyren",
+        "description": "Ask the sandbox agent.",
+        "isDefault": true,
+        "isSticky": true,
+        "modes": [
+          "ask"
+        ]
       }
     ]
   }

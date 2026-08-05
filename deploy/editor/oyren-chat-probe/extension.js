@@ -1,57 +1,45 @@
 const vscode = require("vscode");
+const { logCapabilities } = require("./probeCapabilities");
 
 /**
- * STEP-1 probe for docs/oyren-chat-participant.md. Delete once the real participant ships.
+ * Spike for docs/oyren-chat-participant.md. Delete once the real integration ships.
  *
- * The one thing no amount of API documentation settles: whether Gitpod's openvscode-server build
- * actually ships the Chat UI (`vs/workbench/contrib/chat`) and loads `chatParticipants`. That is a
- * property of the build, so this answers it empirically — bake, launch, open the editor, look.
+ * The question it settles is not whether the chat API exists — it does — but whether a build with
+ * NO Copilot in it will render the Chat view for a third-party participant that declares itself the
+ * default. Nobody appears to have published such a build, so the only way to know is to bake one
+ * and look. If the input box and the model picker appear and this answers, the real integration is
+ * a normal extension. If the welcome pane refuses to yield, the fallback is our own sidebar view.
  *
- * Everything here is deliberately inert: no network, no `vscode.lm`, no model provider, no
- * `enabledApiProposals`. If `@probe` answers, the real extension's foundation is sound.
+ * Everything is wrapped: a failure must be LOGGED, never thrown, or it becomes indistinguishable
+ * from the view simply being absent.
  */
 function activate(context) {
   const out = vscode.window.createOutputChannel("Oyren Chat Probe");
   context.subscriptions.push(out);
 
-  // Logged either way — an absent `vscode.chat` is itself the answer, and a silent failed
-  // activation would look identical to "the view is hidden", which is a different problem.
-  out.appendLine(`vscode.version=${vscode.version}`);
-  out.appendLine(`vscode.chat=${typeof vscode.chat}`);
-  out.appendLine(`createChatParticipant=${typeof (vscode.chat && vscode.chat.createChatParticipant)}`);
-
-  // The DROPDOWN question, which is a different API from the @participant one. Picking an agent
-  // (opencode / cursor / codex / …) from the chat input's picker means contributing language-model
-  // providers, not participants — so probe those entry points too rather than spending a second
-  // bake to learn the name of a function.
-  const lm = vscode.lm;
-  out.appendLine(`vscode.lm=${typeof lm}`);
-  for (const fn of ["registerLanguageModelChatProvider", "registerChatModelProvider", "selectChatModels"]) {
-    out.appendLine(`  lm.${fn}=${typeof (lm && lm[fn])}`);
+  try {
+    logCapabilities(out);
+  } catch (err) {
+    out.appendLine(`capability probe threw: ${err && err.message}`);
   }
 
-  // Whether the Chat view is Copilot-gated is the decisive unknown: if the picker only appears when
-  // Copilot is installed, none of this works for us (Copilot isn't on Open VSX, and we don't want
-  // it). Record what the build thinks its default chat agent is.
-  const ext = vscode.extensions;
-  const copilot = ext && (ext.getExtension("GitHub.copilot") || ext.getExtension("GitHub.copilot-chat"));
-  out.appendLine(`copilot installed=${copilot ? "YES" : "no"}`);
-
-  // Also proves whether the extension host inherits the session env — the real integration needs
-  // SESSION_TOKEN to call /agent/message, so learning this now saves a whole bake later.
-  out.appendLine(`SESSION_TOKEN=${process.env.SESSION_TOKEN ? "present" : "ABSENT"}`);
-
   if (!vscode.chat || typeof vscode.chat.createChatParticipant !== "function") {
-    out.appendLine("RESULT: chat API absent on this build — stop, do not build the participant.");
+    out.appendLine("RESULT: no chat API on this build — the built-in view is not reachable. Use a sidebar view.");
     return;
   }
 
-  const participant = vscode.chat.createChatParticipant("oyren.probe", async (request, _ctx, stream) => {
-    stream.markdown("**probe ok** — this build renders the Chat view and loads `chatParticipants`.\n\n");
-    stream.markdown(`You said: \`${request.prompt || "(nothing)"}\``);
-  });
-  context.subscriptions.push(participant);
-  out.appendLine("RESULT: participant registered.");
+  try {
+    const participant = vscode.chat.createChatParticipant("oyren.probe", async (request, _ctx, stream) => {
+      stream.markdown("**probe ok** — a third-party default participant owns this Chat view.\n\n");
+      stream.markdown(`You said: \`${request.prompt || "(nothing)"}\``);
+    });
+    context.subscriptions.push(participant);
+    out.appendLine("RESULT: participant registered. Now LOOK: does the Chat view render an input box?");
+  } catch (err) {
+    // The likely failure is isDefault being rejected because the proposal flag didn't reach the
+    // extension host — which the enabledApiProposals line above tells us.
+    out.appendLine(`RESULT: registration FAILED: ${err && err.message}`);
+  }
 }
 
 function deactivate() {}

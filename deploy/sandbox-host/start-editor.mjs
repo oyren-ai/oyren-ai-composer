@@ -17,6 +17,10 @@ const PORT = process.env.OYREN_EDITOR_PORT ?? '3131'
 // Set in the baked /etc/oyren/host.env by install-host.sh; the literal is only a last resort for a
 // droplet booted from a snapshot predating that (where /workspace is still a real directory).
 const WORKSPACE_DIR = process.env.OYREN_WORKSPACE_DIR ?? '/home/oyren/workspace'
+// First-party extension ids allowed to use proposed APIs. Keep this list SHORT and first-party:
+// proposed APIs are unstable across versions, so every id here is one more thing an openvscode
+// version bump can break.
+const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe']
 
 const env = mergedEnv()
 
@@ -44,6 +48,14 @@ const args = [
   '--disable-workspace-trust',
   '--server-base-path', `/_oyren/ide/${token}`,
   '--default-folder', WORKSPACE_DIR,
+  // Our own extensions only. A chat participant that declares itself the DEFAULT one — which is what
+  // makes it own the Chat view rather than answer to an @mention — needs the defaultChatParticipant
+  // and chatProvider proposals at 1.109. Granted per extension id, never globally.
+  //
+  // Deliberately a launch flag rather than product.json's extensionEnabledApiProposals: that key
+  // OVERRIDES an extension's own declaration instead of merging with it, so a stale entry there
+  // would silently strip proposals from a later extension that asked for more.
+  ...OYREN_PROPOSAL_EXTENSIONS.flatMap((id) => ['--enable-proposed-api', id]),
 ]
 
 console.log(`starting editor on 127.0.0.1:${PORT} under /_oyren/ide/<token>`)
