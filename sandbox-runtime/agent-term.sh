@@ -14,6 +14,10 @@
 # NOTE the second form starts a SEPARATE agent process. It shares the filesystem with the first (the
 # point of the exercise) but not the conversation, and only the agent this session was launched with
 # is guaranteed to have credentials seeded — see seedAgentAuth.js.
+#
+# Env:
+#   OYREN_AGENT_LAUNCH  the launcher to run inside tmux (default /app/agent-launch.sh). Overridable
+#                       so a self-hosted install can put the runtime somewhere other than /app.
 set -u
 
 KIND="${1:-}"
@@ -34,4 +38,4 @@ esac
 
 # `-e` sets the env for the session rather than for one command, so the auto-restart loop inside
 # agent-launch.sh still sees AGENT_KIND after the agent crashes and is relaunched.
-exec tmux -u new-session -A -s "agent-$KIND" -e "AGENT_KIND=$KIND" /app/agent-launch.sh
+exec tmux -u new-session -A -s "agent-$KIND" -e "AGENT_KIND=$KIND" "${OYREN_AGENT_LAUNCH:-/app/agent-launch.sh}"

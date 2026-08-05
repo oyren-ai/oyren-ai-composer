@@ -35,18 +35,26 @@ if (env.OYREN_EDITOR === '0') {
 // root-capable IDE with an integrated terminal, the user's GitHub token and the agent's API keys.
 // Without a token the router cannot authorise anyone, so refuse to start rather than run something
 // unreachable-but-listening.
+// A self-hosted install that gates the editor at its own reverse proxy sets OYREN_EDITOR_BASE_PATH
+// and owns authorisation itself; everyone else must present a token or get nothing.
 const token = env.SESSION_TOKEN
-if (!token) {
+if (!token && env.OYREN_EDITOR_BASE_PATH === undefined) {
   console.error('SESSION_TOKEN is not set — refusing to start the editor')
   process.exit(1)
 }
+
+// The base path carries the token because openvscode derives every asset and WebSocket URL from
+// --server-base-path: a query param is dropped by those, and a cookie is third-party inside our
+// iframe. A self-hosted install that terminates auth at its own proxy can set OYREN_EDITOR_BASE_PATH
+// (e.g. "/ide", or "" to serve at the root) — the token then gates nothing and the proxy must.
+const basePath = env.OYREN_EDITOR_BASE_PATH ?? `/_oyren/ide/${token}`
 
 const args = [
   '--host', '127.0.0.1', // never the droplet's public IP; :8080 already binds 0.0.0.0
   '--port', String(PORT),
   '--without-connection-token', // the router's path token is the gate
   '--disable-workspace-trust',
-  '--server-base-path', `/_oyren/ide/${token}`,
+  ...(basePath ? ['--server-base-path', basePath] : []),
   '--default-folder', WORKSPACE_DIR,
   // Our own extensions only. A chat participant that declares itself the DEFAULT one — which is what
   // makes it own the Chat view rather than answer to an @mention — needs the defaultChatParticipant
@@ -58,7 +66,7 @@ const args = [
   ...OYREN_PROPOSAL_EXTENSIONS.flatMap((id) => ['--enable-proposed-api', id]),
 ]
 
-console.log(`starting editor on 127.0.0.1:${PORT} under /_oyren/ide/<token>`)
+console.log(`starting editor on 127.0.0.1:${PORT} under ${basePath || '/'}`)
 const child = spawn(BIN, args, { stdio: 'inherit', env })
 child.on('error', (err) => {
   console.error(`failed to exec ${BIN}: ${err.message}`)
