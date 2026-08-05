@@ -20,7 +20,7 @@ const WORKSPACE_DIR = process.env.OYREN_WORKSPACE_DIR ?? '/home/oyren/workspace'
 // First-party extension ids allowed to use proposed APIs. Keep this list SHORT and first-party:
 // proposed APIs are unstable across versions, so every id here is one more thing an openvscode
 // version bump can break.
-const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe']
+const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe', 'oyren.oyren-agent']
 
 const env = mergedEnv()
 

@@ -12,6 +12,7 @@
 #   EDITOR_USER          unix user that owns and runs the editor (default: oyren)
 #   INSTALL_DIR          where the server lives (default: /opt/openvscode-server)
 #   INSTALL_CHAT_PROBE   1 (default) installs the throwaway chat-view probe
+#   INSTALL_OYREN_AGENT  1 (default) installs the Oyren agent chat participant
 set -euo pipefail
 
 EDITOR_USER="${EDITOR_USER:-oyren}"
@@ -33,4 +34,11 @@ install_local_ext() {
 if [ "${INSTALL_CHAT_PROBE:-1}" = "1" ]; then
   echo "==> Oyren chat probe (local, unpacked)"
   install_local_ext oyren-chat-probe
+fi
+
+# The real integration the probe existed to de-risk: the sandbox agent as the Chat view's default
+# participant, for every provider (docs/oyren-chat-participant.md).
+if [ "${INSTALL_OYREN_AGENT:-1}" = "1" ]; then
+  echo "==> Oyren agent extension (local, unpacked)"
+  install_local_ext oyren-agent-extension
 fi
