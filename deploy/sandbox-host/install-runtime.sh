@@ -37,6 +37,8 @@ install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential
 # Backs the editor's terminal-profile dropdown: one profile per agent, plus "Agent", which attaches
 # to the very tmux session Oyren's own web terminal shows.
 install -m 0755 "$APP_DIR/agent-term.sh" /usr/local/bin/oyren-agent-term
+# Refresh the editor's extensions+settings from the rolling release — the no-rebake update path.
+install -m 0755 "$APP_DIR/oyren-editor-update.sh" /usr/local/bin/oyren-editor-update
 # Deliberately shadows the apt-installed gh at /usr/bin/gh — /usr/local/bin comes first on PATH,
 # and the wrapper is what injects the session's short-lived GitHub token.
 install -m 0755 "$APP_DIR/gh-wrapper.sh" /usr/local/bin/gh

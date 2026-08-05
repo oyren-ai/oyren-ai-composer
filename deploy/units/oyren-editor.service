@@ -20,6 +20,8 @@ ConditionPathExists=/etc/oyren/sandbox.env
 # carries CONTAINER_ENV_B64, which the launcher decodes.
 EnvironmentFile=/etc/oyren/host.env
 EnvironmentFile=/etc/oyren/sandbox.env
+# Best-effort ("-"): pull the latest editor extras before start; offline keeps the baked copies.
+ExecStartPre=-/usr/local/bin/oyren-editor-update --boot
 ExecStart=/usr/bin/node /usr/local/lib/oyren/start-editor.mjs
 
 User=oyren

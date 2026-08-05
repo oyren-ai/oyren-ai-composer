@@ -27,6 +27,7 @@ mkdir -p "$DATA/Machine" "$DATA/User"
 install -m 0644 "$HERE/machine-settings.json" "$DATA/Machine/settings.json"
 
 echo "==> Seeding user startup settings -> $DATA/User/settings.json"
+touch "$DATA/User/.oyren-seeded" # oyren-editor-update respects this: the User file is seeded once, then owned by the user
 cat > "$DATA/User/settings.json" <<'EOF'
 {
   "workbench.startupEditor": "none",
