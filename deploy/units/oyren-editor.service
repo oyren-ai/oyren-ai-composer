@@ -23,6 +23,9 @@ EnvironmentFile=/etc/oyren/sandbox.env
 ExecStart=/usr/bin/node /usr/local/lib/oyren/start-editor.mjs
 
 User=oyren
+# Deliberately the /workspace SYMLINK, not $OYREN_WORKSPACE_DIR: systemd does not expand
+# EnvironmentFile variables in WorkingDirectory, and install-host.sh creates the symlink in the same
+# bake that creates its target. The editor's actual folder comes from --default-folder anyway.
 WorkingDirectory=/workspace
 
 Restart=always

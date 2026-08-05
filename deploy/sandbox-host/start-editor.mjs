@@ -7,13 +7,16 @@
 // Wants= (not PartOf=/BindsTo=), means a runtime restart leaves the editor alone.
 //
 // It also does NOT need to know $WORKDIR. entrypoint.sh only resolves that after cloning, which can
-// take a while; the editor instead boots on /workspace immediately and the router 302s a bare hit
-// on the base path to ?folder=$WORKDIR (see sandbox-runtime/src/ide.js).
+// take a while; the editor instead boots on the workspace root immediately and the router 302s a
+// bare hit on the base path to ?folder=$WORKDIR (see sandbox-runtime/src/ide.js).
 import { spawn } from 'node:child_process'
 import { mergedEnv } from './sessionEnv.mjs'
 
 const BIN = process.env.OYREN_EDITOR_BIN ?? '/opt/openvscode-server/bin/openvscode-server'
 const PORT = process.env.OYREN_EDITOR_PORT ?? '3131'
+// Set in the baked /etc/oyren/host.env by install-host.sh; the literal is only a last resort for a
+// droplet booted from a snapshot predating that (where /workspace is still a real directory).
+const WORKSPACE_DIR = process.env.OYREN_WORKSPACE_DIR ?? '/home/oyren/workspace'
 
 const env = mergedEnv()
 
@@ -40,7 +43,7 @@ const args = [
   '--without-connection-token', // the router's path token is the gate
   '--disable-workspace-trust',
   '--server-base-path', `/_oyren/ide/${token}`,
-  '--default-folder', '/workspace',
+  '--default-folder', WORKSPACE_DIR,
 ]
 
 console.log(`starting editor on 127.0.0.1:${PORT} under /_oyren/ide/<token>`)

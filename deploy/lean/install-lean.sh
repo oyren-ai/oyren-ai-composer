@@ -13,10 +13,13 @@
 set -euo pipefail
 
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
-LEAN_DIR="${LEAN_DIR:-/workspace/lean}"
 EDITOR_DIR="${EDITOR_DIR:-/opt/openvscode-server}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_HOME="$(getent passwd "$SANDBOX_USER" | cut -d: -f6)"
+# Resolved from the user's home, not the /workspace symlink, so the path baked into the template's
+# AGENTS.md matches what the editor's file tree actually shows.
+WORKSPACE_DIR="${OYREN_WORKSPACE_DIR:-$USER_HOME/workspace}"
+LEAN_DIR="${LEAN_DIR:-$WORKSPACE_DIR/lean}"
 
 echo "==> Lean project template -> ${LEAN_DIR}"
 mkdir -p "$LEAN_DIR"

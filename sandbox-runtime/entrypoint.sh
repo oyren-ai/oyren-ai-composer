@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Clone the repo(s) into /workspace/<repo-name> sibling folders (if creds + names are present and the
-# folder doesn't exist yet), then start the sandbox server. /workspace is the parent that CONTAINS the
-# repo folders — not a repo root itself. Never echo GITHUB_TOKEN / REPO_CLONE_TOKENS.
+# Clone the repo(s) into $OYREN_WORKSPACE_DIR/<repo-name> sibling folders (if creds + names are
+# present and the folder doesn't exist yet), then start the sandbox server. That directory is the
+# parent that CONTAINS the repo folders — not a repo root itself. Never echo GITHUB_TOKEN /
+# REPO_CLONE_TOKENS.
 # Multi-repo launches send REPO_FULL_NAMES / REPO_CLONE_TOKENS (aligned comma-separated lists, primary
 # first); single-repo launches send only REPO_FULL_NAME / GITHUB_TOKEN — both paths stay supported.
 set -euo pipefail
 
-WORKSPACE=/workspace
+# Under the sandbox user's home so the browser editor (same user) owns what it writes; /workspace is
+# a symlink to it, so absolute paths in skills and AGENTS.md keep working.
+WORKSPACE="${OYREN_WORKSPACE_DIR:-/home/oyren/workspace}"
 mkdir -p "$WORKSPACE"
 
 # Keep heavy Node-based test/build commands from OOM-killing the whole agent container.
@@ -55,7 +58,7 @@ fi
 # The repo folder is the effective project root: unless the orchestrator overrode them, point the
 # server's WORKDIR (terminal cwd, oyren manifest resolution, headless agent turns) and the agent's
 # WORKING_DIR there, so sessions still open at the repo root despite the subfolder layout. A launch
-# that chose "Top level" over 2+ repos sends WORKDIR/WORKING_DIR=/workspace from the orchestrator; the
+# that chose "Top level" over 2+ repos sends WORKDIR/WORKING_DIR=$WORKSPACE from the orchestrator; the
 # `:-` keeps that override so the session opens at the parent and sees every clone as a sibling.
 if [ -n "$REPO_DIR" ] && [ -d "$REPO_DIR" ]; then
   export WORKDIR="${WORKDIR:-$REPO_DIR}"
@@ -66,8 +69,8 @@ fi
 # it now. server.js's `tmux new-session -A -s main` then *attaches* to it, so the browser lands on the
 # already-running agent. Absent AGENT_KIND ⇒ no pre-create ⇒ server.js makes a plain shell (unchanged).
 if [ -n "${AGENT_KIND:-}" ]; then
-  mkdir -p "${WORKING_DIR:-/workspace}" # never let a not-yet-existing start dir silently skip the launch
-  tmux -u new-session -d -s main -c "${WORKING_DIR:-/workspace}" "/app/agent-launch.sh" || true
+  mkdir -p "${WORKING_DIR:-$WORKSPACE}" # never let a not-yet-existing start dir silently skip the launch
+  tmux -u new-session -d -s main -c "${WORKING_DIR:-$WORKSPACE}" "/app/agent-launch.sh" || true
 fi
 
 exec node /app/src/server.js

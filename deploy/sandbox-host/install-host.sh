@@ -15,6 +15,7 @@ export DEBIAN_FRONTEND=noninteractive
 PNPM_VERSION="${PNPM_VERSION:-10.33.0}"
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
 PNPM_HOME="${PNPM_HOME:-/usr/local/share/pnpm}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APT="apt-get -o DPkg::Lock::Timeout=300"
 
 echo "==> Base packages"
@@ -78,8 +79,9 @@ fi
 # passwordless sudo is intentional here (same trade the container made).
 echo "$SANDBOX_USER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$SANDBOX_USER"
 chmod 0440 "/etc/sudoers.d/$SANDBOX_USER"
-mkdir -p /workspace
-chown -R "$SANDBOX_USER:$SANDBOX_USER" /workspace "$PNPM_HOME"
+chown -R "$SANDBOX_USER:$SANDBOX_USER" "$PNPM_HOME"
+
+SANDBOX_USER="$SANDBOX_USER" "$HERE/install-workspace-dir.sh"
 
 echo "==> git system config"
 git config --system user.name "Oyren Sandbox"

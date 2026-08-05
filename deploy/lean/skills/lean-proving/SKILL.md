@@ -1,17 +1,17 @@
 ---
 name: lean-proving
-description: Pair-prove Lean 4 theorems in /workspace/lean — check with lake env lean, edit the same files the user sees live in their browser editor. Use for any Lean 4 proof, tactic, or lake build task.
+description: Pair-prove Lean 4 theorems in /home/oyren/workspace/lean — check with lake env lean, edit the same files the user sees live in their browser editor. Use for any Lean 4 proof, tactic, or lake build task.
 ---
 
 # Pair-proving in Lean 4
 
-The user's browser editor (VS Code + Lean infoview) and you share `/workspace/lean` — your saved
+The user's browser editor (VS Code + Lean infoview) and you share `/home/oyren/workspace/lean` — your saved
 edits appear in their editor within a second, theirs are what you read. Follow the loop in
-`/workspace/lean/AGENTS.md`; the short version:
+`/home/oyren/workspace/lean/AGENTS.md`; the short version:
 
 1. Read before editing (the user may have unsaved-context you're missing — ask if unsure).
 2. One focused change (one `sorry`, one error), then verify:
-   `cd /workspace/lean && lake env lean LeanProject/Basic.lean` — exit 0 = compiles.
+   `cd /home/oyren/workspace/lean && lake env lean LeanProject/Basic.lean` — exit 0 = compiles.
 3. Goal states: insert a `sorry` and read the reported goal, or use `#check`/`example` scratch
    declarations (remove them before finishing).
 4. Never end a turn with the file broken — leave a commented `sorry` instead.

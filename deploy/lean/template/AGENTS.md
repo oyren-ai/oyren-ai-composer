@@ -1,6 +1,6 @@
 # Proving with Lean 4 (oyren sandbox)
 
-You are in a ready-to-build Lean 4 project at `/workspace/lean`. The user sees these SAME files in
+You are in a ready-to-build Lean 4 project at `/home/oyren/workspace/lean`. The user sees these SAME files in
 a browser VS Code with the Lean infoview — every edit you save shows up in their editor within a
 second, and their saves are what you read. You are pair-proving, not working on a copy.
 
@@ -17,7 +17,7 @@ second, and their saves are what you read. You are pair-proving, not working on 
 1. Read the file the user is working in before touching it — they may have local edits.
 2. Make one focused change at a time (finish one `sorry`, fix one error), then CHECK it:
    ```bash
-   cd /workspace/lean && lake env lean LeanProject/Basic.lean
+   cd /home/oyren/workspace/lean && lake env lean LeanProject/Basic.lean
    ```
    Exit 0 with no output = everything compiles. Errors show file:line:col — read them, fix, re-check.
 3. `lake build` rebuilds the whole library (use after adding files or changing imports).
