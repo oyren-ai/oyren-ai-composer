@@ -16,7 +16,7 @@
 #   INSTALL_DIR              where the server lands (default: /opt/openvscode-server)
 set -euo pipefail
 
-OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.2}"
+OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.3}"
 EDITOR_USER="${EDITOR_USER:-oyren}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/openvscode-server}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
