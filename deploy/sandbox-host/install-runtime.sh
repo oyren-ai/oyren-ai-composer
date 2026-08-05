@@ -34,12 +34,15 @@ echo "==> Helper commands on PATH"
 install -m 0755 "$APP_DIR/bin/oyren" /usr/local/bin/oyren
 install -m 0755 "$APP_DIR/welcome.sh" /usr/local/bin/oyren-welcome
 install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential-oyren
+# Backs the editor's terminal-profile dropdown: one profile per agent, plus "Agent", which attaches
+# to the very tmux session Oyren's own web terminal shows.
+install -m 0755 "$APP_DIR/agent-term.sh" /usr/local/bin/oyren-agent-term
 # Deliberately shadows the apt-installed gh at /usr/bin/gh — /usr/local/bin comes first on PATH,
 # and the wrapper is what injects the session's short-lived GitHub token.
 install -m 0755 "$APP_DIR/gh-wrapper.sh" /usr/local/bin/gh
 ln -sf /usr/local/bin/oyren-welcome /usr/local/bin/oyren-help
 install -m 0644 "$APP_DIR/tmux.conf" /etc/tmux.conf
-chmod +x "$APP_DIR/entrypoint.sh" "$APP_DIR/agent-launch.sh"
+chmod +x "$APP_DIR/entrypoint.sh" "$APP_DIR/agent-launch.sh" "$APP_DIR/agent-term.sh"
 
 echo "==> Session launchers + systemd units"
 # Both launchers share sessionEnv.mjs via a RELATIVE import, so they must land in one directory —
