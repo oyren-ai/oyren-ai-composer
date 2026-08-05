@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Bring the editor's FAST-CHANGING layer — Oyren extensions + settings — up to date from the rolling
-# "editor-extras" release, without a snapshot rebake and without relaunching the session.
+# Bring the editor up to date from the rolling "editor-extras" release on the public fork, without
+# a snapshot rebake and without relaunching the session. The tarball carries the fast layer
+# (extensions + settings, published from the fork's oyren/ dir) AND a server-version manifest —
+# when the manifest names a different openvscode build than the installed one, the whole server is
+# swapped too (oyren-editor-server-swap), so even fork builds ship without a bake.
 #
 # The bake still ships a working copy of everything; this only overlays newer bits. Any failure
-# (offline, bad tarball, 404) leaves the baked copies untouched — download and extraction happen in
-# a temp dir and only a verified result is copied into place.
+# (offline, bad tarball, 404, failed swap) leaves the installed copies untouched — download and
+# extraction happen in a temp dir and only a verified result is copied into place.
 #
 #   oyren-editor-update          fetch + install + restart the editor (run it inside a session)
 #   oyren-editor-update --boot   fetch + install only (systemd ExecStartPre; failure must be inert)
@@ -28,6 +31,16 @@ if ! curl -fsSL --max-time 15 --retry 2 -o "$TMP/extras.tar.gz" "$URL"; then
 fi
 if ! tar -xzf "$TMP/extras.tar.gz" -C "$TMP" || [ ! -d "$TMP/extensions" ]; then
   echo "editor extras tarball malformed — keeping the baked copies"; exit 0
+fi
+
+# Server first, so the extension overlay below lands on the NEW tree. Only swap when both versions
+# are known — a missing stamp means an image from before the manifest existed, and guessing there
+# would be worse than staying put. A failed swap is inert: the installed server keeps running.
+WANT="$(cat "$TMP/server-version" 2>/dev/null | tr -d '[:space:]')"
+HAVE="$(cat "$INSTALL_DIR/.oyren-version" 2>/dev/null | tr -d '[:space:]')"
+if [ -n "$WANT" ] && [ -n "$HAVE" ] && [ "$WANT" != "$HAVE" ]; then
+  echo "server $HAVE -> $WANT"
+  /usr/local/bin/oyren-editor-server-swap "$WANT" "$TMP" || echo "server swap failed — keeping $HAVE"
 fi
 
 # Extensions: whole-directory swap per extension (a partial copy would be worse than stale).

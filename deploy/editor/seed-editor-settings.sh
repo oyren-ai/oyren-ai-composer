@@ -3,6 +3,9 @@
 # exists; separate from it because that script installs a vendor server and this writes our config —
 # different jobs, different failure modes.
 #
+# The settings FILES come from the extras tarball (EXTRAS_DIR, downloaded by install-editor.sh from
+# the fork's rolling editor-extras release) — the same files oyren-editor-update re-seeds at boot.
+#
 # Two scopes, deliberately:
 #   Machine — the full Oyren defaults (machine-settings.json): theme, terminal agent profiles,
 #             chat mode availability. The right layer for per-server policy.
@@ -13,7 +16,7 @@
 set -euo pipefail
 
 EDITOR_USER="${EDITOR_USER:-oyren}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SETTINGS_DIR="${EXTRAS_DIR:?EXTRAS_DIR must point at the extracted editor-extras tarball}/settings"
 
 EDITOR_HOME="$(getent passwd "$EDITOR_USER" | cut -d: -f6)"
 if [ -z "$EDITOR_HOME" ]; then
@@ -24,16 +27,10 @@ DATA="$EDITOR_HOME/.openvscode-server/data"
 
 echo "==> Seeding machine settings -> $DATA/Machine/settings.json"
 mkdir -p "$DATA/Machine" "$DATA/User"
-install -m 0644 "$HERE/machine-settings.json" "$DATA/Machine/settings.json"
+install -m 0644 "$SETTINGS_DIR/machine-settings.json" "$DATA/Machine/settings.json"
 
 echo "==> Seeding user startup settings -> $DATA/User/settings.json"
 touch "$DATA/User/.oyren-seeded" # oyren-editor-update respects this: the User file is seeded once, then owned by the user
-cat > "$DATA/User/settings.json" <<'EOF'
-{
-  "workbench.startupEditor": "none",
-  "workbench.welcomePage.walkthroughs.openOnInstall": false
-}
-EOF
-chmod 0644 "$DATA/User/settings.json"
+install -m 0644 "$SETTINGS_DIR/user-settings.json" "$DATA/User/settings.json"
 
 chown -R "$EDITOR_USER:$EDITOR_USER" "$EDITOR_HOME/.openvscode-server"
