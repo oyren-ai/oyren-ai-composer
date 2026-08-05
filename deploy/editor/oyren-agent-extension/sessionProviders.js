@@ -11,10 +11,9 @@ const { createClient } = require("./agentClient")
 const { makeHandler } = require("./turnHandler")
 
 // type = the runtime's AGENT_KIND ids, verbatim — the ?agent= value the sandbox validates against
-// its spawn table. claude-code is listed for completeness; the runtime answers side turns for it
-// with a clear "launch agent only" error (it has no ACP recipe), which renders as chat text.
+// its spawn table. claude-code is deliberately absent: it runs launch-only (SDK engine, no ACP
+// recipe), and a dropdown row that can only apologize is worse than no row.
 const KINDS = [
-  { type: "claude-code", name: "claude" },
   { type: "codex-cli", name: "codex" },
   { type: "cursor-cli", name: "cursor" },
   { type: "gemini-cli", name: "gemini" },

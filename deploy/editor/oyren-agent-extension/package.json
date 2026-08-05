@@ -26,12 +26,11 @@
       "Core wraps nothing loop-shaped around an agent-mode participant at 1.109; tool orchestration",
       "is engine-side. isSticky false on purpose: sticky plants '@oyren' into the input on every",
       "turn, and this panel IS the Oyren agent — attribution says so, the input shouldn't.",
-      "The seven named participants back the per-agent chat sessions (sessionProviders.js); they",
-      "must be declared here or the main thread silently rejects their registration."
+      "The named participants back the per-agent chat sessions (sessionProviders.js); they must be",
+      "declared here or the main thread silently rejects their registration. claude-code is absent by design: it runs launch-only (SDK engine, no ACP recipe), and a dead dropdown row is worse than none."
     ],
     "chatParticipants": [
       { "id": "oyren.agent", "name": "oyren", "fullName": "Oyren", "description": "Ask the sandbox agent — one chat for every CLI agent.", "isDefault": true, "isSticky": false, "modes": ["ask", "agent", "edit"] },
-      { "id": "oyren.claude", "name": "claude", "fullName": "Claude Code", "description": "Claude Code on this workspace.", "isSticky": false },
       { "id": "oyren.codex", "name": "codex", "fullName": "Codex", "description": "Codex on this workspace.", "isSticky": false },
       { "id": "oyren.cursor", "name": "cursor", "fullName": "Cursor", "description": "Cursor on this workspace.", "isSticky": false },
       { "id": "oyren.gemini", "name": "gemini", "fullName": "Gemini CLI", "description": "Gemini CLI on this workspace.", "isSticky": false },
@@ -46,13 +45,12 @@
       "canDelegate:true makes selection open the session IN the chat widget."
     ],
     "chatSessions": [
-      { "type": "claude-code", "name": "claude", "displayName": "claude", "description": "New Claude Code chat on this workspace (launch-agent only).", "canDelegate": true },
-      { "type": "codex-cli", "name": "codex", "displayName": "codex", "description": "New Codex chat on this workspace.", "canDelegate": true },
-      { "type": "cursor-cli", "name": "cursor", "displayName": "cursor", "description": "New Cursor chat on this workspace.", "canDelegate": true },
-      { "type": "gemini-cli", "name": "gemini", "displayName": "gemini", "description": "New Gemini chat on this workspace.", "canDelegate": true },
-      { "type": "opencode", "name": "opencode", "displayName": "opencode", "description": "New opencode chat on this workspace.", "canDelegate": true },
-      { "type": "qwen-code", "name": "qwen", "displayName": "qwen", "description": "New Qwen chat on this workspace.", "canDelegate": true },
-      { "type": "antigravity-cli", "name": "antigravity", "displayName": "antigravity", "description": "New Antigravity chat on this workspace.", "canDelegate": true }
+      { "type": "codex-cli", "name": "codex", "displayName": "codex", "description": "New Codex chat on this workspace.", "icon": "$(hubot)", "canDelegate": true },
+      { "type": "cursor-cli", "name": "cursor", "displayName": "cursor", "description": "New Cursor chat on this workspace.", "icon": "$(target)", "canDelegate": true },
+      { "type": "gemini-cli", "name": "gemini", "displayName": "gemini", "description": "New Gemini chat on this workspace.", "icon": "$(sparkle)", "canDelegate": true },
+      { "type": "opencode", "name": "opencode", "displayName": "opencode", "description": "New opencode chat on this workspace.", "icon": "$(code)", "canDelegate": true },
+      { "type": "qwen-code", "name": "qwen", "displayName": "qwen", "description": "New Qwen chat on this workspace.", "icon": "$(layers)", "canDelegate": true },
+      { "type": "antigravity-cli", "name": "antigravity", "displayName": "antigravity", "description": "New Antigravity chat on this workspace.", "icon": "$(rocket)", "canDelegate": true }
     ],
     "languageModelChatProviders": [{ "vendor": "oyren", "displayName": "Oyren" }]
   }
