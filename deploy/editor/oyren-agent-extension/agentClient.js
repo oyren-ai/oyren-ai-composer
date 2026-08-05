@@ -4,14 +4,18 @@
 // instead of dialing a server that isn't there (self-hosted editors run outside any session).
 const http = require("node:http")
 
-function createClient(env = process.env) {
+// `kind` selects a SIDE engine (sideEngines.js in the runtime): every request carries ?agent=<kind>
+// and streams from that agent instead of the launch one. Omitted ⇒ the launch agent. A client is
+// one engine's view — per-engine busy/model state comes free from making one client per kind.
+function createClient(env = process.env, kind = null) {
   const port = Number(env.PORT || 8080) // the runtime's single routed port
   const token = env.SESSION_TOKEN || ""
-  // `busy` is the shared one-turn latch (the sandbox runs ONE persistent agent session);
+  // `busy` is the one-turn latch for THIS engine (each engine is one persistent agent session);
   // currentModel/modelsLive back ensureModel's "only switch on a KNOWN difference" rule below.
   const state = { busy: false, currentModel: null, modelsLive: false }
 
-  const url = (path, extra = "") => `http://127.0.0.1:${port}${path}?token=${encodeURIComponent(token)}${extra}`
+  const agentParam = kind ? `&agent=${encodeURIComponent(kind)}` : ""
+  const url = (path, extra = "") => `http://127.0.0.1:${port}${path}?token=${encodeURIComponent(token)}${agentParam}${extra}`
 
   function requestJson(method, path, body) {
     return new Promise((resolve, reject) => {

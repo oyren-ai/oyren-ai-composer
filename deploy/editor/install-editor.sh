@@ -16,7 +16,7 @@
 #   INSTALL_DIR              where the server lands (default: /opt/openvscode-server)
 set -euo pipefail
 
-OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.1}"
+OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.2}"
 EDITOR_USER="${EDITOR_USER:-oyren}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/openvscode-server}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,37 +66,22 @@ console.log(`    nameLong=${product.nameLong} gallery=${product.extensionsGaller
 console.log(`    removed=${removed.length ? removed.join(',') : '(none)'}`)
 NODE
 
-# Machine-level settings live under the EDITOR_USER's home, at the path openvscode derives from
-# product.json's serverDataFolderName — which is why that key is deliberately left alone.
 # The VM is a bare Ubuntu image: the `oyren` user only ever existed inside the sandbox container,
 # so create it here. Agents run as this user on the droplet, and it owns the editor and its data.
+# Settings live under its home at the path openvscode derives from product.json's
+# serverDataFolderName — which is why that key is deliberately left alone.
 if ! getent passwd "$EDITOR_USER" >/dev/null; then
   echo "==> creating user $EDITOR_USER"
   useradd --create-home --shell /bin/bash "$EDITOR_USER"
 fi
-EDITOR_HOME="$(getent passwd "$EDITOR_USER" | cut -d: -f6)"
-if [ -z "$EDITOR_HOME" ]; then
-  echo "ERROR: user '$EDITOR_USER' has no home directory" >&2
-  exit 1
-fi
-SETTINGS_DIR="$EDITOR_HOME/.openvscode-server/data/Machine"
-echo "==> Seeding machine settings -> $SETTINGS_DIR/settings.json"
-mkdir -p "$SETTINGS_DIR"
-install -m 0644 "$HERE/machine-settings.json" "$SETTINGS_DIR/settings.json"
+EDITOR_USER="$EDITOR_USER" "$HERE/seed-editor-settings.sh"
+chown -R "$EDITOR_USER:$EDITOR_USER" "$INSTALL_DIR"
 
-chown -R "$EDITOR_USER:$EDITOR_USER" "$INSTALL_DIR" "$EDITOR_HOME/.openvscode-server"
-
-# Anthropic's own VS Code extension, from Open VSX. NEVER Microsoft's Marketplace: its terms of use
-# forbid non-Microsoft products, which is also why product.json's extensionsGallery is left alone.
-#
-# It fits here specifically because it declares extensionKind:["workspace"] and ships a linux-x64
-# build — meaning it runs in the SERVER-side Node extension host, which is what openvscode-server
-# provides, rather than the browser sandbox that vscode.dev imposes. Running agents directly on the
-# droplet helps twice over: the extension lands on the same filesystem and PATH as the `claude`
-# binary install-agents.sh put there, and as the session's own credentials.
-#
-# Non-fatal on purpose. A registry hiccup must not sink a 15-minute bake, and the oyren chat pane
-# remains the shipping surface either way.
+# Anthropic's VS Code extension, from Open VSX — NEVER Microsoft's Marketplace (its terms forbid
+# non-Microsoft products; same reason extensionsGallery is left alone). It works here because it
+# declares extensionKind:["workspace"] + ships linux-x64, i.e. runs in the SERVER-side extension
+# host beside the `claude` binary and the session's credentials. Non-fatal on purpose: a registry
+# hiccup must not sink a 15-minute bake.
 if [ "${INSTALL_CLAUDE_EXTENSION:-1}" = "1" ]; then
   echo "==> Claude Code extension (Open VSX)"
   install_ext() { su - "$EDITOR_USER" -c "'$INSTALL_DIR/bin/openvscode-server' --install-extension '$1'"; }

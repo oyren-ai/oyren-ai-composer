@@ -42,3 +42,10 @@ if [ "${INSTALL_OYREN_AGENT:-1}" = "1" ]; then
   echo "==> Oyren agent extension (local, unpacked)"
   install_local_ext oyren-agent-extension
 fi
+
+# The middle pane's onboarding: the "Welcome to Oyren" walkthrough, opened once per sandbox by the
+# extension itself (globalState latch). Set INSTALL_OYREN_WELCOME=0 for a bare editor.
+if [ "${INSTALL_OYREN_WELCOME:-1}" = "1" ]; then
+  echo "==> Oyren welcome walkthrough (local, unpacked)"
+  install_local_ext oyren-welcome-extension
+fi
