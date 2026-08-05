@@ -29,8 +29,18 @@
       "The named participants back the per-agent chat sessions (sessionProviders.js); they must be",
       "declared here or the main thread silently rejects their registration. claude-code is absent by design: it runs launch-only (SDK engine, no ACP recipe), and a dead dropdown row is worse than none."
     ],
+    "_comment.commands": "Slash launches: /codex <task> starts a NEW PAID SESSION running that agent with the task as its first message (docs/oyren-chat-launch.md). The descriptions say so — a user must never learn about the charge from the invoice.",
     "chatParticipants": [
-      { "id": "oyren.agent", "name": "oyren", "fullName": "Oyren", "description": "Ask the sandbox agent — one chat for every CLI agent.", "isDefault": true, "isSticky": false, "modes": ["ask", "agent", "edit"] },
+      { "id": "oyren.agent", "name": "oyren", "fullName": "Oyren", "description": "Ask the sandbox agent — one chat for every CLI agent.", "isDefault": true, "isSticky": false, "modes": ["ask", "agent", "edit"],
+        "commands": [
+          { "name": "claude", "description": "Launch a NEW paid session running Claude Code, with your message as its first task." },
+          { "name": "codex", "description": "Launch a NEW paid session running Codex, with your message as its first task." },
+          { "name": "cursor", "description": "Launch a NEW paid session running Cursor, with your message as its first task." },
+          { "name": "gemini", "description": "Launch a NEW paid session running Gemini, with your message as its first task." },
+          { "name": "opencode", "description": "Launch a NEW paid session running opencode, with your message as its first task." },
+          { "name": "qwen", "description": "Launch a NEW paid session running Qwen, with your message as its first task." },
+          { "name": "antigravity", "description": "Launch a NEW paid session running Antigravity, with your message as its first task." }
+        ] },
       { "id": "oyren.codex", "name": "codex", "fullName": "Codex", "description": "Codex on this workspace.", "isSticky": false },
       { "id": "oyren.cursor", "name": "cursor", "fullName": "Cursor", "description": "Cursor on this workspace.", "isSticky": false },
       { "id": "oyren.gemini", "name": "gemini", "fullName": "Gemini CLI", "description": "Gemini CLI on this workspace.", "isSticky": false },
