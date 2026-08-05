@@ -8,6 +8,7 @@
 // engine, and engines idle past the reap window are killed — each is a real CLI process, so RAM is
 // the budget that matters, not sockets. claude-code stays launch-only (SDK engine, no ACP recipe).
 const { spawnConfigFor } = require("./acp/spawnConfig")
+const { sideEnvForKind, seedSideAuth } = require("./sideAgentAuth")
 const { spawnAcpChild } = require("./acp/spawnChild")
 const { handshake } = require("./acp/sessionStart")
 const translate = require("./acp/translate")
@@ -28,7 +29,8 @@ function isSideKind(kind, env = process.env) {
 function drop(e) { engines.delete(e.kind); try { if (e.child && e.child.kill) e.child.kill() } catch {} }
 
 async function start(e) {
-  const cfg = spawnConfigFor(e.kind)
+  seedSideAuth(e.kind)
+  const cfg = spawnConfigFor(e.kind, sideEnvForKind(e.kind))
   try { ensureHomeWritable() } catch {}
   const handle = spawnAcpChild({
     cfg, kind: e.kind, spawnImpl,

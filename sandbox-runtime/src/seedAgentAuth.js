@@ -48,4 +48,19 @@ function seedAgentAuth({ home = process.env.HOME || "/home/oyren", env = process
   return wroteCodex || wroteGemini || wroteOpencode
 }
 
-module.exports = { seedAgentAuth }
+// Side engines seed ONE kind from its own overlaid env — never the aggregate, or one kind's
+// OpenRouter key would leak into another kind's config file (they share var names like
+// OPENROUTER_API_KEY across different contracts). qwen/cursor are env-only ⇒ no entry.
+const KIND_SEEDERS = {
+  "codex-cli": seedCodex,
+  "gemini-cli": seedGemini,
+  opencode: (home, env) => seedOpencodeConfig(home, env),
+}
+
+/** Seed exactly one kind's credential files; returns whether anything was written. */
+function seedAgentAuthForKind(kind, env, home = process.env.HOME || "/home/oyren") {
+  const seeder = KIND_SEEDERS[kind]
+  return seeder ? seeder(home, env) : false
+}
+
+module.exports = { seedAgentAuth, seedAgentAuthForKind }
