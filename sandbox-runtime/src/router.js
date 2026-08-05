@@ -23,7 +23,7 @@ const { handleLogs } = require("./logs")
 const { handleRuns } = require("./runs")
 const { handleRunsPage } = require("./runsPage")
 const { handleGateway } = require("./gateway")
-const { STATIC_DIR, SESSION_TOKEN } = require("./config")
+const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
 const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
 
@@ -68,7 +68,7 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
       // the workbench's asset and WS URLs. proxyHttp forwards client headers verbatim, so a
       // caller-supplied one would rewrite those URLs out from under us. Drop it.
       delete req.headers["x-forwarded-prefix"]
-      const redirect = ideFolderRedirect(req.url, workdir)
+      const redirect = ideFolderRedirect(req.url, workdir, WORKSPACE_DIR)
       if (redirect) {
         res.writeHead(302, { location: redirect })
         return res.end()

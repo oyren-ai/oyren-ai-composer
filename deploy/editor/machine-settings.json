@@ -34,6 +34,19 @@
     "bash": { "path": "bash", "args": ["-l"], "icon": "terminal-bash" }
   },
 
+  "_comment.scoping": [
+    "Cosmetic only. A session is meant to open on its repo and stay there, and the router pins",
+    "?folder= to $WORKDIR (see sandbox-runtime/src/ideFolder.js) — but that is UX shaping, NOT a",
+    "boundary: /vscode-remote-resource takes an absolute path with no validation, and the integrated",
+    "terminal is a shell. The boundary is the per-session VM and the oyren unix user, which is where",
+    "SageMaker, Cloud Shell, Gitpod and Coder all put it too. Do not mistake these lines for security.",
+    "Note the menu bar can be brought back by right-clicking the activity bar."
+  ],
+  "window.menuBarVisibility": "compact",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
+  "workbench.tips.enabled": false,
+  "workbench.enableExperiments": false,
+
   "security.workspace.trust.enabled": false,
   "telemetry.telemetryLevel": "off",
   "update.mode": "none",

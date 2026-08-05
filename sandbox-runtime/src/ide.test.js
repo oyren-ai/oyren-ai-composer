@@ -39,10 +39,50 @@ test("redirects the bare base path to the resolved workdir", () => {
   )
 })
 
-test("does not redirect once a folder is already chosen — that would loop", () => {
-  assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace`, "/workspace/acme"), null)
-  assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?workspace=x`, "/workspace/acme"), null)
+test("leaves a folder inside the workdir alone — redirecting again would loop", () => {
+  assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme`, "/workspace/acme"), null)
+  assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme%2Fsrc`, "/workspace/acme"), null)
   assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?payload=x`, "/workspace/acme"), null)
+})
+
+// Scoping, not security: the editor's own /vscode-remote-resource and its terminal both reach the
+// whole filesystem regardless. This keeps a session ON its project — a stray ?folder= from a
+// bookmark or a restored window would otherwise land the user's next save outside the repo.
+test("pins a folder outside the workdir back to it", () => {
+  const pinned = `folder=%2Fworkspace%2Facme`
+  assert.match(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fetc`, "/workspace/acme"), new RegExp(pinned))
+  assert.match(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2F`, "/workspace/acme"), new RegExp(pinned))
+  // A sibling that merely shares a prefix is still outside — the "/" in the prefix test is why.
+  assert.match(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme-other`, "/workspace/acme"),
+    new RegExp(pinned),
+  )
+  // `..` must not walk out; the path is normalised before comparison.
+  assert.match(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme%2F..%2F..%2Fetc`, "/workspace/acme"),
+    new RegExp(pinned),
+  )
+})
+
+test("an empty window is pinned to the workdir, and ?workspace= is normalised away", () => {
+  const out = ideFolderRedirect(`/_oyren/ide/${T}/?ew=true`, "/workspace/acme")
+  assert.match(out, /folder=%2Fworkspace%2Facme/)
+  assert.doesNotMatch(out, /ew=/)
+  assert.doesNotMatch(ideFolderRedirect(`/_oyren/ide/${T}/?workspace=%2Fetc`, "/workspace/acme"), /workspace=/)
+})
+
+// /workspace is a symlink to the real directory, so a URL built from either spelling names the same
+// place. Rejecting the alias would break bookmarks made before the move.
+test("accepts the /workspace alias for the real workspace directory", () => {
+  const workdir = "/home/oyren/workspace/acme"
+  assert.equal(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme%2Fsrc`, workdir, "/home/oyren/workspace"),
+    null,
+  )
+  assert.match(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Fother`, workdir, "/home/oyren/workspace"),
+    /folder=%2Fhome%2Foyren%2Fworkspace%2Facme/,
+  )
 })
 
 test("never redirects asset or websocket requests", () => {

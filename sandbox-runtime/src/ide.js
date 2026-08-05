@@ -22,9 +22,7 @@ const crypto = require("crypto")
 const IDE_PREFIX = "/_oyren/ide"
 const IDE_PORT = Number(process.env.OYREN_EDITOR_PORT || 3131)
 
-/** Query params openvscode itself uses to select what to open; if any is present the client has
- *  already been told where to go and must not be redirected again (that would loop). */
-const FOLDER_PARAMS = ["folder", "workspace", "ew", "payload"]
+const { pinnedFolder } = require("./ideFolder")
 
 function pathOf(rawUrl) {
   return (rawUrl || "/").split("?")[0]
@@ -46,18 +44,21 @@ function ideAuth(rawUrl, sessionToken) {
 }
 
 /**
- * Where to send a bare hit on the IDE base path.
+ * Where to send a hit on the IDE base path.
  *
- * The editor is started at boot with `--default-folder /workspace`, because $WORKDIR is only known
- * after entrypoint.sh has cloned the repo — which can take a while, and we want the editor up
- * immediately. The router knows the resolved $WORKDIR, so it supplies the real folder here via
- * openvscode's `?folder=` param.
+ * Two jobs. First, supply the folder: the editor boots with `--default-folder` pointing at the
+ * workspace root, because $WORKDIR is only known after entrypoint.sh has cloned the repo — which can
+ * take a while, and the editor should be up before then. The router knows the resolved $WORKDIR, so
+ * it fills it in here via openvscode's `?folder=` param.
  *
- * Returns null (no redirect) unless the request is exactly the base path AND carries none of the
- * params openvscode uses to choose what to open — otherwise we would redirect the client onto a
- * URL that redirects again.
+ * Second, keep it there. A request naming a folder outside $WORKDIR — or asking for an empty window
+ * — is redirected back to $WORKDIR rather than passed through. See ideFolder.js for why that is
+ * scoping and emphatically not a security boundary.
+ *
+ * Returns null (no redirect) when the request is not the bare base path, or is already pointing
+ * somewhere acceptable. The redirect target always satisfies the check, so this cannot loop.
  */
-function ideFolderRedirect(rawUrl, workdir) {
+function ideFolderRedirect(rawUrl, workdir, workspaceDir) {
   if (!workdir) return null
   const base = `${IDE_PREFIX}/`
   const path = pathOf(rawUrl)
@@ -68,9 +69,12 @@ function ideFolderRedirect(rawUrl, workdir) {
 
   const query = (rawUrl || "").split("?")[1] ?? ""
   const params = new URLSearchParams(query)
-  if (FOLDER_PARAMS.some((p) => params.has(p))) return null
+  const folder = pinnedFolder(params, workdir, workspaceDir)
+  if (folder === null) return null
 
-  params.set("folder", workdir)
+  params.delete("ew")
+  params.delete("workspace")
+  params.set("folder", folder)
   const token = rest.replace(/\/$/, "")
   return `${IDE_PREFIX}/${token}/?${params.toString()}`
 }
