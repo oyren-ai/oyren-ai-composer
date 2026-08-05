@@ -15,7 +15,11 @@ const information = (id, name, isDefault) => ({
   family: "oyren",
   version: "1.0.0",
   ...LIMITS,
-  capabilities: {},
+  // toolCalling is REQUIRED, not aspirational: in Agent and Edit modes the picker filters to
+  // toolCalling-capable models (languageModels.ts suitableForAgentMode) — without it the list is
+  // empty and the picker shows a dead synthetic "Auto". It is also true: these "models" are agent
+  // engines that run tools, engine-side.
+  capabilities: { toolCalling: true },
   isUserSelectable: true, // proposed (chatProvider): without it the picker hides the model
   isDefault,
 })

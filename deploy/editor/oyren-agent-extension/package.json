@@ -36,8 +36,18 @@
         "description": "Ask the sandbox agent.",
         "isDefault": true,
         "isSticky": true,
+        "_comment.modes": [
+          "ALL THREE, not just ask. The panel opens in Agent mode (hardcoded default, chatInputPart",
+          "~:508), and getDefaultAgent filters by mode — an ask-only default participant makes every",
+          "Agent- and Edit-mode send die in a swallowed 'Cannot handle request' with no UI at all.",
+          "Core wraps nothing loop-shaped around an agent-mode participant at 1.109: it invokes the",
+          "handler once and tool orchestration is the participant's own business — which ours does",
+          "engine-side. So claiming all modes is honest, and the only alternative is silence."
+        ],
         "modes": [
-          "ask"
+          "ask",
+          "agent",
+          "edit"
         ]
       }
     ],
