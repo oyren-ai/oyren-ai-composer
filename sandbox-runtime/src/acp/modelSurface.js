@@ -2,11 +2,13 @@
 // engine's live session state via getters so a respawned child is always the one addressed.
 const { resolveModels } = require("./models")
 
-/** ctx: { ensureStarted(), rpc(), sessionId(), sessionModels(), getModel(), rememberModel(id) } */
+/** ctx: { agentKind(), ensureStarted(), rpc(), sessionId(), sessionModels(), getModel(), rememberModel(id) }.
+ *  agentKind is the ENGINE'S OWN kind, not AGENT_KIND: a side engine falling back to the launch
+ *  agent's static list would offer another agent's models. */
 function makeModelSurface(ctx) {
   async function listModels() {
     try { await ctx.ensureStarted() } catch { /* fall through to the static list — /agent/models must never 500 */ }
-    return { models: resolveModels(process.env.AGENT_KIND || "", ctx.sessionModels()), current: ctx.getModel() }
+    return { models: resolveModels(ctx.agentKind() || "", ctx.sessionModels()), current: ctx.getModel() }
   }
   async function setModel(id) {
     await ctx.ensureStarted()

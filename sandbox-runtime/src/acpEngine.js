@@ -94,7 +94,7 @@ async function send(payload, turnId) {
 async function interrupt() { if (rpc && sessionId) rpc.notify("session/cancel", { sessionId }); busy = false; pendingPrompts = 0 } // prompt resolves stopReason=cancelled
 
 const { listModels, setModel } = makeModelSurface({
-  ensureStarted, rpc: () => rpc, sessionId: () => sessionId,
+  agentKind: () => process.env.AGENT_KIND, ensureStarted, rpc: () => rpc, sessionId: () => sessionId,
   sessionModels: () => sessionModels, getModel: () => model, rememberModel: (id) => { model = id },
 })
 

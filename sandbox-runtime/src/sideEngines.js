@@ -49,7 +49,7 @@ function engineFor(kind) {
   if (e) return e
   e = { kind, child: null, rpc: null, sessionId: null, models: null, model: null, busy: false, sink: null, starting: null, lastUsed: Date.now(), tstate: translate.createState(), stderrTail: () => "" }
   e.surface = makeModelSurface({
-    ensureStarted: () => ensureStarted(e), rpc: () => e.rpc, sessionId: () => e.sessionId,
+    agentKind: () => e.kind, ensureStarted: () => ensureStarted(e), rpc: () => e.rpc, sessionId: () => e.sessionId,
     sessionModels: () => e.models, getModel: () => e.model, rememberModel: (id) => { e.model = id },
   })
   engines.set(kind, e)
