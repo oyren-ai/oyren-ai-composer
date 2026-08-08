@@ -37,6 +37,12 @@ install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential
 # Backs the editor's terminal-profile dropdown: one profile per agent, plus "Agent", which attaches
 # to the very tmux session Oyren's own web terminal shows.
 install -m 0755 "$APP_DIR/agent-term.sh" /usr/local/bin/oyren-agent-term
+# The native Chat panel's claude replacement once claudeCode.claudeProcessWrapper points at it
+# (openvscode-server's oyren/settings/machine-settings.json) — installed under its OWN name so it
+# never shadows the pnpm-global `claude` shim it wraps. Defaults to a pure passthrough; only relays
+# through the broker (started by server.js) when OYREN_CLAUDE_WRAPPER=1. See
+# CONTINUITY_DESIGN_PLAN.md Feature 2 and claude-process-wrapper.js.
+install -m 0755 "$APP_DIR/claude-process-wrapper.js" /usr/local/bin/oyren-claude-wrapper
 # Refresh the editor's extensions+settings from the rolling release — the no-rebake update path.
 # The swap helper is its escalation: when the extras manifest names a different server build, the
 # updater calls it to replace the whole /opt/openvscode-server tree.

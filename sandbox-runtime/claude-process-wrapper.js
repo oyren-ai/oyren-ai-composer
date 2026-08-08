@@ -19,7 +19,11 @@
 const net = require("net")
 
 const REAL_CLAUDE_BIN = process.env.OYREN_CLAUDE_REAL_BIN || "/usr/local/share/pnpm/claude"
-const SOCKET_PATH = process.env.OYREN_CLAUDE_WRAPPER_SOCKET || "/run/oyren/claude-wrapper.sock"
+// install-runtime.sh installs THIS file standalone at /usr/local/bin/oyren-claude-wrapper — no
+// sibling src/ tree travels with it, so the default below is a deliberate literal duplicate of
+// src/claudeWrapperSocketPath.js's DEFAULT_SOCKET_PATH (which startClaudeWrapperBroker.js uses from
+// inside $APP_DIR, where relative requires still resolve). Keep the two literals in sync.
+const SOCKET_PATH = process.env.OYREN_CLAUDE_WRAPPER_SOCKET || "/tmp/oyren-claude-wrapper.sock"
 const WRAPPER_ARGS = process.argv.slice(2)
 
 /** Best-effort session-key derivation from argv. Phase 0 of CONTINUITY_DESIGN_PLAN.md calls for

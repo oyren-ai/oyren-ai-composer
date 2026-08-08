@@ -15,6 +15,7 @@ const { IDE_PORT, ideAuth } = require("./ide")
 const { seedClaudeAuth } = require("./seedClaudeAuth")
 const { seedClaudeSettings } = require("./seedClaudeSettings")
 const { seedCursorSettings } = require("./seedCursorSettings")
+const { maybeStartClaudeWrapperBroker } = require("./startClaudeWrapperBroker")
 const { installConsoleCapture } = require("./logBuffer")
 
 // Tee this process's own console output (including the "[fatal] ..." breadcrumbs below) into the
@@ -62,6 +63,10 @@ try { seedCursorSettings() } catch (e) { console.error("seedCursorSettings faile
 // Auto-checkpoint the agent's dirty/unpushed work onto a GitHub shadow ref every few minutes, so a
 // container replacement never loses it (no-op unless an agent runtime with a repo; see gitCheckpoint.js).
 try { require("./gitCheckpoint").start() } catch (e) { console.error("gitCheckpoint failed to start:", e && e.message) }
+
+// Disconnect-survival broker for the native VS Code Chat panel's claude process — no-op unless
+// OYREN_CLAUDE_WRAPPER=1 (see claude-process-wrapper.js + CONTINUITY_DESIGN_PLAN.md Feature 2).
+try { maybeStartClaudeWrapperBroker() } catch (e) { console.error("claude wrapper broker failed to start:", e && e.message) }
 
 // Keep this server (and its /_oyren/health route) responsive while agent builds peg the CPU — the DO
 // probe recycles us after ~5 missed answers. Negative niceness needs privileges we may lack; best-effort.
