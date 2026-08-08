@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# oyren-welcome — banner shown when a terminal session opens.
+# Re-run any time with `oyren-help`.
+set -u
+
+# Each per-agent image (oyren-sandbox-<agent>) layers exactly one CLI on the base, so detection below
+# only lists what's actually installed in THIS image. The pnpm global bin is where those CLIs land, but a
+# login shell's /etc/profile sources /etc/bash.bashrc (which fires this banner) *before* profile.d
+# re-adds PNPM_HOME — so prepend it here first, or `command -v` would miss the CLI. Matches Dockerfile
+# (ENV PATH) + agent-launch.sh.
+export PATH="/usr/local/share/pnpm:/app/node_modules/.bin:$PATH"
+
+# Colors only when stdout is a TTY (avoids escape codes in logs/pipes).
+if [ -t 1 ]; then
+  CY=$'\033[1;36m'; GR=$'\033[1;32m'; YL=$'\033[1;33m'; B=$'\033[1m'; D=$'\033[2m'; X=$'\033[0m'
+else
+  CY=''; GR=''; YL=''; B=''; D=''; X=''
+fi
+
+repo="${REPO_FULL_NAME:-—}"
+
+# Print one assistant line only if its CLI is on PATH (i.e. installed in this image).
+print_assistant() {
+  command -v "$1" >/dev/null 2>&1 || return 0
+  printf '    %s%-9s%s %s\n' "$GR" "$1" "$X" "$2"
+}
+assistants="$(
+  print_assistant claude   "Claude Code (Anthropic)"
+  print_assistant opencode "opencode — open-source, multi-model"
+  print_assistant qwen     "Qwen Code (Alibaba)"
+  print_assistant gemini   "Gemini CLI (Google)"
+  print_assistant codex    "Codex CLI (OpenAI)"
+)"
+
+cat <<EOF
+
+${CY}  Oyren cloud sandbox${X}
+  ${D}repo${X} ${repo}   ${D}dir${X} ${PWD}
+EOF
+
+# Only show the assistants block when this image actually ships a CLI (the plain base ships none).
+if [ -n "$assistants" ]; then
+cat <<EOF
+
+  ${B}AI coding assistant — type it to start:${X}
+${assistants}
+EOF
+fi
+
+cat <<EOF
+
+  ${B}Deploy your app — make it reachable at this sandbox's URL:${X}
+    ${YL}oyren expose <port>${X}  point the public URL at your app (writes oyren.yml)
+    ${YL}oyren start${X}          run your app via the oyren manifest (managed)
+    ${YL}oyren restart${X}        restart it   ${YL}oyren status${X}  check it
+
+  ${D}Your app must bind 0.0.0.0:\$PORT (or the port you expose).
+  tmux keeps your work running if you disconnect — just reconnect.
+  Show this again with${X} ${GR}oyren-help${X}${D}.${X}
+
+EOF

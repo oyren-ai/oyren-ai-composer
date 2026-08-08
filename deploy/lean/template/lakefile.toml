@@ -1,0 +1,13 @@
+name = "LeanProject"
+version = "0.1.0"
+defaultTargets = ["LeanProject"]
+
+[[lean_lib]]
+name = "LeanProject"
+
+# Mathlib, pinned to the SAME version as lean-toolchain — bump both together or
+# `lake exe cache get` finds no prebuilt oleans and the image build compiles for hours.
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+version = "git#v4.24.0"
