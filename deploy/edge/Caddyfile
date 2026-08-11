@@ -1,12 +1,30 @@
-# Edge Caddyfile: one wildcard site whose hostnames are routed dynamically.
-# SANDBOX_EDGE_DOMAIN comes from /etc/oyren/edge.env (systemd passes it through; when running
-# caddy standalone, export it first). The wildcard cert REQUIRES a DNS-01 challenge — fill in
-# the dns block below for your DNS provider (see README.md; this is manual one-time setup).
+# Edge Caddyfile: the route admin API, plus one wildcard site whose hostnames are routed
+# dynamically. SANDBOX_EDGE_DOMAIN and EDGE_DO_API_KEY come from /etc/oyren/edge.env — caddy.service
+# needs an EnvironmentFile drop-in for that path (see README.md), because Caddy substitutes {$VAR}
+# from its OWN environment, not oyren-edge.service's. When running caddy standalone, export both.
+#
+# Both sites use a DNS-01 challenge: the wildcard cannot use HTTP-01 at all, and the admin host
+# shares the same credentials. Needs a caddy build that includes caddy-dns/digitalocean.
+
+# The route admin API (oyren-edge.service on 127.0.0.1:3000) — this is EDGE_ADMIN_URL.
+#
+# It MUST be its own site block even though `*.{$SANDBOX_EDGE_DOMAIN}` below also matches
+# `admin.<domain>`: the admin host is never in the route map, so under the wildcard it falls
+# straight through to the 404 responder. EDGE_ADMIN_URL would be unreachable and every launch would
+# fail to register its route — sandboxes would provision and then never get a public URL. Caddy
+# matches the most specific site first, so an exact hostname wins over the wildcard.
+# Authentication is the bearer token checked inside the admin API itself.
+admin.{$SANDBOX_EDGE_DOMAIN} {
+	tls {
+		dns digitalocean {$EDGE_DO_API_KEY}
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}
+
 *.{$SANDBOX_EDGE_DOMAIN} {
 	tls {
-		# TODO(one-time setup): DNS provider plugin + credentials — any github.com/caddy-dns/*
-		# module works (requires a caddy build with that module — see README.md).
-		dns REPLACE_ME_PROVIDER REPLACE_ME_CREDENTIALS
+		dns digitalocean {$EDGE_DO_API_KEY}
 	}
 
 	# host → upstream, entries maintained by the route admin API (oyren-edge.service) in

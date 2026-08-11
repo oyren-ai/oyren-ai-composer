@@ -33,6 +33,19 @@ cd "$APP_DIR"
 npm ci
 npm run build
 
+# Everything the SANDBOX lane needs on the VM itself, because agents now run on the droplet rather
+# than inside a container: the host packages + oyren user, every agent CLI, and the branded editor.
+# Order matters — install-host.sh creates the user and pnpm that the other two rely on, and all
+# three need the Node install above.
+# The edge and build lanes want none of it (an edge host is a 1GB Caddy box), so SANDBOX_HOST=0
+# skips the lot and keeps those bakes small and fast.
+if [ "${SANDBOX_HOST:-1}" = "1" ]; then
+  bash "$APP_DIR/deploy/sandbox-host/install-host.sh"
+  bash "$APP_DIR/deploy/sandbox-host/install-agents.sh"
+  bash "$APP_DIR/deploy/sandbox-host/install-runtime.sh"
+  bash "$APP_DIR/deploy/editor/install-editor.sh"
+fi
+
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"
 cp "$APP_DIR"/deploy/units/oyren-sandbox.service \
    "$APP_DIR"/deploy/units/oyren-build.service \
