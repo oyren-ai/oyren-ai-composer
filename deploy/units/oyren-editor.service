@@ -1,0 +1,34 @@
+# The browser editor (openvscode-server) for a sandbox session.
+#
+# Its own unit rather than something entrypoint.sh backgrounds: oyren-sandbox.service has
+# Restart=always with RestartSec=2, and systemd's default KillMode=control-group would take a
+# backgrounded editor down with it — so every runtime crash would tear down and relaunch a ~400MB
+# editor in a two-second loop.
+#
+# Deliberately NO [Install] section and no WantedBy=multi-user.target. It is pulled in solely by
+# Wants= from oyren-sandbox.service, which cloud-init starts explicitly from runcmd. Enabling it at
+# multi-user.target would race cloud-init's write_files: the unit could evaluate its
+# ConditionPathExists before /etc/oyren/sandbox.env has been written, and then never start. That
+# race is exactly why the sandbox unit is start'ed from runcmd rather than trusted to boot.
+[Unit]
+Description=Oyren browser editor
+After=network-online.target
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+# host.env is baked (PATH, PNPM_HOME, locale); sandbox.env is per-session from cloud-init and
+# carries CONTAINER_ENV_B64, which the launcher decodes.
+EnvironmentFile=/etc/oyren/host.env
+EnvironmentFile=/etc/oyren/sandbox.env
+# Best-effort ("-"): pull the latest editor extras before start; offline keeps the baked copies.
+ExecStartPre=-/usr/local/bin/oyren-editor-update --boot
+ExecStart=/usr/bin/node /usr/local/lib/oyren/start-editor.mjs
+
+User=oyren
+# Deliberately the /workspace SYMLINK, not $OYREN_WORKSPACE_DIR: systemd does not expand
+# EnvironmentFile variables in WorkingDirectory, and install-host.sh creates the symlink in the same
+# bake that creates its target. The editor's actual folder comes from --default-folder anyway.
+WorkingDirectory=/workspace
+
+Restart=always
+RestartSec=3

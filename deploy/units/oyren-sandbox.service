@@ -1,15 +1,38 @@
-# Sandbox-mode VM: supervise ONE long-lived oyren-sandbox container.
-# Baked into the sandbox snapshot ENABLED; ConditionPathExists makes it a no-op until the # VM's cloud-init user_data writes /etc/oyren/sandbox.env and (re)starts it.
+# Sandbox-mode VM: run the session runtime DIRECTLY on the droplet.
+#
+# This unit used to supervise one long-lived Docker container. Agents run on the VM now, so it runs
+# /app (the sandbox node server) itself and systemd's Restart=always replaces the supervise loop
+# that composer's sandbox mode used to provide.
+#
+# Baked into the sandbox snapshot ENABLED; ConditionPathExists makes it a no-op until the VM's
+# cloud-init user_data writes /etc/oyren/sandbox.env and starts it.
+#
+# Docker is still installed on the droplet, but only for the AGENT's own builds and tests — the
+# session itself is no longer containerised, so this unit only Wants it rather than Requires it. A
+# broken docker.service must not stop a session from starting.
 [Unit]
-Description=Oyren sandbox container supervisor
+Description=Oyren sandbox session runtime
 After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
+# oyren-editor is Wants=, NOT PartOf=/BindsTo=: this unit restarts on every runtime crash, and the
+# editor must survive that rather than being torn down and relaunched with it. Wants= also means one
+# `systemctl start oyren-sandbox` from cloud-init brings both up, which avoids giving the editor its
+# own [Install] and racing cloud-init's write_files.
+Wants=network-online.target docker.service oyren-editor.service
 ConditionPathExists=/etc/oyren/sandbox.env
 
 [Service]
+# host.env is baked (PATH, PNPM_HOME, locale); sandbox.env is written per session by cloud-init and
+# carries CONTAINER_ENV_B64, which the launcher decodes — see start-sandbox.mjs for why it stays
+# base64 rather than becoming plain KEY=value lines here.
+EnvironmentFile=/etc/oyren/host.env
 EnvironmentFile=/etc/oyren/sandbox.env
-ExecStart=/usr/bin/node /srv/composer/app/dist/sandbox/main.js
+ExecStart=/usr/bin/node /usr/local/lib/oyren/start-sandbox.mjs
+
+# The agent installs packages, runs builds and uses sudo; the VM is the isolation boundary, exactly
+# as it was when the container ran unhardened inside it.
+User=oyren
+WorkingDirectory=/app
+
 Restart=always
 RestartSec=2
 
