@@ -17,10 +17,12 @@ const PORT = process.env.OYREN_EDITOR_PORT ?? '3131'
 // Set in the baked /etc/oyren/host.env by install-host.sh; the literal is only a last resort for a
 // droplet booted from a snapshot predating that (where /workspace is still a real directory).
 const WORKSPACE_DIR = process.env.OYREN_WORKSPACE_DIR ?? '/home/oyren/workspace'
-// First-party extension ids allowed to use proposed APIs. Keep this list SHORT and first-party:
-// proposed APIs are unstable across versions, so every id here is one more thing an openvscode
-// version bump can break.
-const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe', 'oyren.oyren-agent']
+// Extension ids allowed to use proposed APIs. Keep this list SHORT: proposed APIs are unstable
+// across versions, so every id here is one more thing an openvscode version bump can break. Was
+// first-party-only until openai.chatgpt (Codex) needed chatSessionsProvider/languageModelProxy for
+// its own chat panel to activate at all (same reason oyren-agent needs it) — third-party entries
+// still require the same bar: verified need, verified proposal support, not added speculatively.
+const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe', 'oyren.oyren-agent', 'openai.chatgpt']
 
 const env = mergedEnv()
 
