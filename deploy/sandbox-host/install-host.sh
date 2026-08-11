@@ -68,6 +68,10 @@ npm_config_fetch_retries=6
 npm_config_fetch_retry_mintimeout=10000
 npm_config_fetch_retry_maxtimeout=600000
 npm_config_fetch_timeout=600000
+# Kill switch for the native Chat panel's disconnect-survival wrapper+broker (CONTINUITY_DESIGN_PLAN.md
+# Feature 2). Default OFF: claude-process-wrapper.js is a pure passthrough and server.js never starts
+# the broker unless this is explicitly "1". Flows to both via this baked file — no other plumbing.
+OYREN_CLAUDE_WRAPPER=0
 EOF
 chmod 0644 /etc/oyren/host.env
 
