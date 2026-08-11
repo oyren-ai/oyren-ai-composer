@@ -1,0 +1,76 @@
+# Kubernetes Development Environment Configuration
+# Copy this file to k8s-dev.tfvars and fill in your values
+# IMPORTANT: Never commit k8s-dev.tfvars to git!
+
+# DigitalOcean API Token (required)
+# Get this from: https://cloud.digitalocean.com/account/api/tokens
+do_token = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Project Configuration
+project_name = "oyren-composer"
+environment  = "dev"
+region       = "nyc3"
+
+# Network Configuration
+vpc_cidr = "10.20.0.0/16"
+
+# Kubernetes Cluster Configuration
+kubernetes_version = "1.28.2-do.0"  # Check available versions: doctl kubernetes options versions
+
+# Node Pool - Default pool for system services + agent pods
+node_pool_size  = "s-2vcpu-4gb"  # $24/month per node
+node_pool_count = 2              # Start with 2 nodes
+
+# Autoscaling - automatically add/remove nodes based on demand
+enable_autoscaling  = true
+autoscale_min_nodes = 2  # Minimum nodes (always running)
+autoscale_max_nodes = 5  # Maximum nodes (scale up to this)
+
+# Cluster Maintenance
+auto_upgrade  = true   # Automatically upgrade to new Kubernetes versions
+surge_upgrade = false  # false = safer (one node at a time), true = faster
+
+# Maintenance window (when auto-upgrades happen)
+maintenance_window = {
+  day        = "sunday"   # Day of week for maintenance
+  start_time = "04:00"    # Time in 24-hour format (UTC)
+}
+
+# Optional: Additional node pools for specialized workloads
+# Uncomment and modify as needed
+# additional_node_pools = [
+#   {
+#     name       = "gpu-agents"
+#     size       = "g-2vcpu-8gb-intel"  # GPU-enabled droplets
+#     node_count = 1
+#     auto_scale = false
+#     labels = {
+#       "oyren.ai/pool-type" = "gpu"
+#       "oyren.ai/workload"  = "ml"
+#     }
+#     taints = [
+#       {
+#         key    = "nvidia.com/gpu"
+#         value  = "true"
+#         effect = "NoSchedule"
+#       }
+#     ]
+#   }
+# ]
+
+# Oyren Composer API Token
+# Generate with: openssl rand -hex 32
+composer_api_token = ""  # Leave empty to skip, or add your token
+
+# Install Add-ons
+install_nginx_ingress = true   # NGINX Ingress Controller for HTTP/HTTPS routing
+install_cert_manager  = true   # cert-manager for automatic TLS certificates
+
+# DNS Configuration (optional)
+enable_dns     = false
+domain_name    = ""           # e.g., "oyren.ai"
+create_domain  = false        # Set to true if domain doesn't exist in DigitalOcean
+dns_subdomain  = "composer-k8s-dev"  # Will create composer-k8s-dev.yourdomain.com
+
+# SSH Access (for any additional VMs you might add later)
+ssh_allowed_ips = ["0.0.0.0/0", "::/0"]  # Restrict this in production!
