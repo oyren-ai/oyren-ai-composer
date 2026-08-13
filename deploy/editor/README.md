@@ -19,7 +19,9 @@ sudo ../sandbox-host/install-workspace-dir.sh   # the folder it opens
 | `EDITOR_USER` | `oyren` | Owns and runs the server. Created if missing. |
 | `INSTALL_DIR` | `/opt/openvscode-server` | |
 | `INSTALL_CLAUDE_EXTENSION` | `1` | Anthropic's extension, from Open VSX. |
-| `INSTALL_CHAT_PROBE` | `1` | Throwaway spike — set `0` for a real install. |
+| `INSTALL_CODEX_EXTENSION` | `1` | OpenAI's Codex extension (`openai.chatgpt`), from Open VSX. |
+| `INSTALL_QWEN_EXTENSION` | `1` | Qwen Code, from Open VSX; manifest patched to render in the Secondary Side Bar. |
+| `INSTALL_CHAT_PROBE` | `0` | Throwaway spike, dev-only — see below. |
 | `INSTALL_OYREN_PREVIEW` | `1` | Localhost-preview mini browser command — see below. |
 
 Then run it with `../sandbox-host/start-editor.mjs`, or the `oyren-editor.service` unit in
@@ -84,6 +86,12 @@ and set `INSTALL_CHAT_PROBE=0`.
 ## oyren-preview
 
 "Oyren: Open Preview" (Command Palette, or the status bar item) opens the built-in Simple Browser
-inside the editor pointed at `http://localhost:<port>` — a dev server running on the same sandbox,
-previewed without registering a public route. It offers ports already known via `oyren route`
+inside the editor pointed at a dev server running on the same sandbox. `http://localhost:<port>`
+would not work: in the user's browser — and in the editor's webview tabs, which render there —
+localhost is the *user's* machine, not the sandbox, and Chromium's Local Network Access rules block
+the request anyway. So previews open session-origin URLs instead: a gateway route when one exists,
+or `/_oyren/port/<token>/<port>/`. It offers ports already known via `oyren route`
 (`sandbox-runtime`'s route list, as a convenience) plus manual entry for anything not routed.
+
+The source lives in the fork's `oyren/extensions/oyren-preview`, shipping via editor-extras like
+the other first-party extensions — not in this repo.

@@ -23,6 +23,7 @@
 #   INSTALL_DIR              where the server lands (default: /opt/openvscode-server)
 #   INSTALL_CLAUDE_EXTENSION 1 (default) installs anthropic.claude-code from Open VSX
 #   INSTALL_CODEX_EXTENSION  1 (default) installs openai.chatgpt (Codex) from Open VSX
+#   INSTALL_QWEN_EXTENSION   1 (default) installs qwenlm.qwen-code-vscode-ide-companion from Open VSX
 set -euo pipefail
 
 OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.3}"
@@ -78,32 +79,10 @@ fi
 EDITOR_USER="$EDITOR_USER" EXTRAS_DIR="$EXTRAS_DIR" "$HERE/seed-editor-settings.sh"
 chown -R "$EDITOR_USER:$EDITOR_USER" "$INSTALL_DIR"
 
-# Marketplace CLI-agent extensions, from Open VSX — NEVER Microsoft's Marketplace (its terms forbid
-# non-Microsoft products; same reason extensionsGallery is left alone). Shared by both blocks below:
-# each declares extensionKind:["workspace"] + ships linux-x64, i.e. runs in the SERVER-side
-# extension host beside its CLI binary and the session's credentials. Non-fatal on purpose: a
-# registry hiccup must not sink a 15-minute bake.
-install_ext() { su - "$EDITOR_USER" -c "'$INSTALL_DIR/bin/openvscode-server' --install-extension '$1'"; }
-
-if [ "${INSTALL_CLAUDE_EXTENSION:-1}" = "1" ]; then
-  echo "==> Claude Code extension (Open VSX)"
-  # Open VSX publishes the namespace as "Anthropic"; VS Code ids are conventionally lowercased.
-  # Try the canonical id first, then the namespace-cased form, before giving up.
-  if install_ext anthropic.claude-code || install_ext Anthropic.claude-code; then
-    echo "    installed"
-  else
-    echo "    WARNING: claude-code extension unavailable — editor and chat pane are unaffected" >&2
-  fi
-fi
-
-if [ "${INSTALL_CODEX_EXTENSION:-1}" = "1" ]; then
-  echo "==> Codex extension (Open VSX)"
-  if install_ext openai.chatgpt; then
-    echo "    installed"
-  else
-    echo "    WARNING: codex extension unavailable — editor and chat pane are unaffected" >&2
-  fi
-fi
+# Marketplace CLI-agent extensions (Claude Code, Codex, Qwen), from Open VSX — split into their own
+# script because installing vendor extensions is a different job from installing the VENDOR server.
+# The INSTALL_*_EXTENSION toggles above pass through via the environment.
+EDITOR_USER="$EDITOR_USER" INSTALL_DIR="$INSTALL_DIR" "$HERE/install-marketplace-extensions.sh"
 
 # Oyren's own first-party extensions — kept in their own script because this one installs a VENDOR
 # server and that is a different job with a different failure mode.
