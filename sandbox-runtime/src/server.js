@@ -1,7 +1,7 @@
 // Composition root: one Node process, one port. The HTTP router serves health/control/static/gateway
 // and proxies to user apps via the Routes config or the single-port supervisor fallback; the upgrade
-// handler routes the token-gated `/terminal` PTY to tmux and any other WebSocket to the user's app.
-// Started by entrypoint.sh after the repo is cloned.
+// handler (upgrade.js) routes the token-gated `/terminal` PTY to tmux, the editor + port-proxy WS,
+// and any other WebSocket to the user's app. Started by entrypoint.sh after the repo is cloned.
 const http = require("http")
 const cfg = require("./config")
 const resolve = require("./resolve")
@@ -9,9 +9,7 @@ const { createRouter } = require("./router")
 const { Supervisor } = require("./supervisor")
 const { Routes } = require("./routes")
 const { setupTerminal } = require("./terminal")
-const { wsRouteFor } = require("./routeFor")
-const { proxyWs } = require("./proxyWs")
-const { IDE_PORT, ideAuth } = require("./ide")
+const { createUpgradeHandler } = require("./upgrade")
 const { seedClaudeAuth } = require("./seedClaudeAuth")
 const { seedClaudeSettings } = require("./seedClaudeSettings")
 const { seedCursorSettings } = require("./seedCursorSettings")
@@ -35,18 +33,6 @@ process.on("uncaughtException", (err) => {
   console.error("[fatal] uncaughtException:", (err && (err.stack || err.message)) || err)
   process.exit(1)
 })
-
-// The WS upgrade handler runs outside any request try/catch — a throw here (bad proxy target, parse
-// error) would become an uncaughtException and kill every session. Guard it so one bad upgrade only
-// drops that socket.
-function safeUpgrade(handler) {
-  return (req, socket, head) => {
-    try { handler(req, socket, head) } catch (e) {
-      console.error("[upgrade] failed:", e && e.message)
-      try { socket.destroy() } catch {}
-    }
-  }
-}
 
 // Subscription login: when a Claude Code setup-token was injected, seed onboarding/trust so the
 // first interactive `claude` lands authenticated with no prompts. Best-effort — never block boot.
@@ -85,34 +71,6 @@ const router = createRouter({ supervisor, workdir: cfg.WORKDIR, controlToken: cf
 const server = http.createServer(router)
 const termWss = setupTerminal(cfg.WORKDIR)
 
-server.on("upgrade", safeUpgrade((req, socket, head) => {
-  const route = wsRouteFor(req.url)
-  if (route.kind === "terminal") {
-    const url = new URL(req.url, "http://localhost")
-    if (!cfg.SESSION_TOKEN || url.searchParams.get("token") !== cfg.SESSION_TOKEN) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
-      return socket.destroy()
-    }
-    return termWss.handleUpgrade(req, socket, head, (ws) => termWss.emit("connection", ws, req))
-  }
-  if (route.kind === "ide") {
-    // The token is in the PATH here, not the query: openvscode's client builds this URL from its
-    // --server-base-path and only puts reconnectionToken in the query string.
-    if (!ideAuth(req.url, cfg.SESSION_TOKEN)) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
-      return socket.destroy()
-    }
-    // proxyWs replays the ORIGINAL url (unlike proxyHttp, which rewrites it to the stripped
-    // downstream path) — which is exactly what the editor needs, since its base path must survive.
-    return proxyWs(req, socket, head, IDE_PORT)
-  }
-  // WebSocket: try routes first, then supervisor.exposedPort
-  if (routes) {
-    const match = routes.match(req.url)
-    if (match) return proxyWs(req, socket, head, match.route.port)
-  }
-  if (supervisor.exposedPort) return proxyWs(req, socket, head, supervisor.exposedPort)
-  socket.destroy()
-}))
+server.on("upgrade", createUpgradeHandler({ termWss, routes, supervisor }))
 
 server.listen(cfg.PORT, () => console.log(`oyren-sandbox listening on :${cfg.PORT}`))

@@ -10,6 +10,7 @@ const { readContainerStats } = require("./stats")
 const { runCaptured } = require("./runScript")
 const { runAction, runResultAction } = require("./controlRun")
 const { runStreaming, listRunLogs, readRunLog } = require("./runStream")
+const { routeAction } = require("./controlRoutes")
 const { jobs: defaultJobs } = require("./sharedJobs") // one process-wide registry, shared with runs.js
 
 function tokenOk(req, expected) {
@@ -88,26 +89,10 @@ async function handleControl(req, res, { supervisor, workdir, token, routes, run
     return send(res, 200, { runId, content })
   }
 
-  // --- Route management ---
-  if (action === "route/add") {
-    if (!routes) return send(res, 501, { error: "routes not initialized" })
-    const prefix = body.prefix
-    const port = Number(body.port)
-    if (!prefix || !port) return send(res, 400, { error: "prefix and port are required" })
-    const updated = routes.add(prefix, port, body.label || "")
-    return send(res, 200, { routes: updated })
-  }
-  if (action === "route/remove") {
-    if (!routes) return send(res, 501, { error: "routes not initialized" })
-    const prefix = body.prefix
-    if (!prefix) return send(res, 400, { error: "prefix is required" })
-    const removed = routes.remove(prefix)
-    return send(res, removed ? 200 : 404, { removed, routes: routes.list() })
-  }
-  if (action === "route/list") {
-    if (!routes) return send(res, 501, { error: "routes not initialized" })
-    return send(res, 200, { routes: routes.list() })
-  }
+  // Route management lives in controlRoutes.js; route/list additionally answers `origin` — the
+  // port proxy's capability probe — when the public origin is knowable (see publicOrigin.js).
+  const routed = routeAction(action, body, { routes })
+  if (routed) return send(res, routed.status, routed.payload)
 
   return send(res, 404, { error: "unknown control action" })
 }

@@ -76,3 +76,15 @@ test("ws upgrades route terminal vs user app", () => {
   assert.equal(wsRouteFor("/terminal/socket").kind, "terminal")
   assert.equal(wsRouteFor("/socket.io/").kind, "app")
 })
+
+test("the port proxy gets its own kind in BOTH http and ws dispatch", () => {
+  assert.equal(routeFor("/_oyren/port/tok/3000/").kind, "port")
+  assert.equal(routeFor("/_oyren/port/tok/3000/assets/app.js?v=1").kind, "port")
+  assert.equal(routeFor("/_oyren/port").kind, "port")
+  assert.equal(wsRouteFor("/_oyren/port/tok/3000/ws").kind, "port")
+})
+
+test("/_oyren/portxyz is not a prefix match — it stays the user app", () => {
+  assert.equal(routeFor("/_oyren/portxyz").kind, "app")
+  assert.equal(wsRouteFor("/_oyren/portxyz").kind, "app")
+})

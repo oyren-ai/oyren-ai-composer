@@ -17,12 +17,11 @@
 // our cross-site iframe — exactly what browser ITP rules block. This also matches the ?token=
 // convention already used elsewhere: the browser cannot set headers on an iframe.
 
-const crypto = require("crypto")
-
 const IDE_PREFIX = "/_oyren/ide"
 const IDE_PORT = Number(process.env.OYREN_EDITOR_PORT || 3131)
 
 const { pinnedFolder } = require("./ideFolder")
+const { tokenEq } = require("./sessionAuth")
 
 function pathOf(rawUrl) {
   return (rawUrl || "/").split("?")[0]
@@ -38,9 +37,7 @@ function ideAuth(rawUrl, sessionToken) {
   // ["", "_oyren", "ide", "<token>", ...]
   const got = pathOf(rawUrl).split("/")[3]
   if (typeof got !== "string" || got.length === 0) return false
-  const a = Buffer.from(decodeURIComponent(got))
-  const b = Buffer.from(sessionToken)
-  return a.length === b.length && crypto.timingSafeEqual(a, b)
+  return tokenEq(decodeURIComponent(got), sessionToken)
 }
 
 /**

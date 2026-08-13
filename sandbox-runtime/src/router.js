@@ -8,11 +8,11 @@
 //  - /_oyren/runs     → JSON list of detached script runs + their output for the panel (SESSION_TOKEN).
 //  - /_oyren/runs.html→ browsable HTML view of those same runs, for a browser tab / iframe (SESSION_TOKEN).
 //  - /_oyren/gateway  → landing page with all configured routes + download/logs links.
+//  - /_oyren/port/*   → session-token-gated proxy to any loopback port (token in the path; portProxy.js).
 //  - /how-to-deploy   → static page (legacy, kept for compatibility).
-//  - everything else  → check Routes config for a matching prefix; if none, fall back to
-//                        supervisor.exposedPort; if that's also unset, show the gateway page.
+//  - everything else  → routerApp.js: Routes config → supervisor.exposedPort → gateway page.
 const { routeFor } = require("./routeFor")
-const { serveStatic, serveIndex } = require("./staticSite")
+const { serveStatic } = require("./staticSite")
 const { proxyHttp } = require("./proxyHttp")
 const { handleControl } = require("./control")
 const { handleAgentMessage, handleAgentCurrent } = require("./agentChat")
@@ -23,7 +23,9 @@ const { handleLogs } = require("./logs")
 const { handleRuns } = require("./runs")
 const { handleRunsPage } = require("./runsPage")
 const { handleGateway } = require("./gateway")
-const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR } = require("./config")
+const { handleAppRoute } = require("./routerApp")
+const { handlePortProxy } = require("./portProxy")
+const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR, PORT } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
 const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
 
@@ -80,45 +82,14 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
         res.end("editor starting…")
       })
     }
+    // Session-token-gated proxy to any loopback port — how the editor's Oyren Preview (and any
+    // session-origin URL the agent hands out) reaches an unrouted dev server. See portProxy.js.
+    if (route.kind === "port") return handlePortProxy(req, res, { sessionToken: SESSION_TOKEN, selfPort: PORT })
     if (route.kind === "static") return serveStatic(res, STATIC_DIR, (req.url || "/").split("?")[0])
 
-    // --- app routing: try configured routes first, then supervisor.exposedPort fallback ---
-    if (routes) {
-      const match = routes.match(req.url)
-      if (match) {
-        // Rewrite the request URL to the downstream path (prefix stripped) before proxying
-        const origUrl = req.url
-        req.url = match.downstream
-        return proxyHttp(req, res, match.route.port, () => {
-          // Restore original URL so the gateway fallback renders correctly
-          req.url = origUrl
-          showGateway(req, res, { routes, supervisor, status: 503 })
-        })
-      }
-    }
-
-    const port = supervisor.exposedPort
-    if (port) return proxyHttp(req, res, port, () => showGateway(req, res, { routes, supervisor, status: 503 }))
-
-    // Nothing exposed, nothing routed — show the gateway landing page
-    return showGateway(req, res, { routes, supervisor, status: 200 })
+    // Everything else is the user's app: configured routes → exposedPort → gateway page.
+    return handleAppRoute(req, res, { routes, supervisor })
   }
-}
-
-/** Serve the gateway page as the fallback (when no app is up or as a 503 when the app crashed).
- *
- *  Unlike the explicit /_oyren/gateway route this must NOT 401: it is what the user's own app URL
- *  falls back to, so an unauthenticated visitor should still get a readable "nothing running yet"
- *  page rather than a bare error. It must equally not leak the session token — plain `/` reaches
- *  here — so the token is passed only when the request actually proves it already has it, and
- *  otherwise the page simply renders without its download/logs links (which would be useless to an
- *  unauthenticated viewer anyway). */
-function showGateway(req, res, { routes, supervisor, status }) {
-  return handleGateway(req, res, {
-    routes,
-    sessionToken: queryTokenOk(req.url, SESSION_TOKEN) ? SESSION_TOKEN : "",
-    exposedPort: supervisor.exposedPort,
-  })
 }
 
 module.exports = { createRouter }

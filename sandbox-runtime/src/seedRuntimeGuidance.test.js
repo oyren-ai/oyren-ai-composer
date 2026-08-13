@@ -23,6 +23,8 @@ test("seeds the workflow block into the provider context file, under its OWN mar
   assert.match(text, /max-old-space-size/) // cap the process below what's free
   assert.match(text, /`oyren\/checkpoint-sl-1`/) // the ACTUAL checkpoint ref name
   assert.match(text, /`oyren route add <prefix> <port>/) // how to expose an app via the gateway
+  assert.match(text, /_oyren\/port\/<SESSION_TOKEN>\/<port>\//) // the token-gated port proxy alternative
+  assert.match(text, /localhost in THEIR browser is THEIR machine/) // why localhost URLs never work for the user
   assert.match(text, /`\/_oyren\/gateway`/) // where to see route status
   assert.match(text, /`\/_oyren\/logs`/) // where to debug a route that won't come up
   assert.ok(!text.includes("run_script")) // no more script-runner offload
