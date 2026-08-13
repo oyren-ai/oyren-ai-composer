@@ -37,7 +37,11 @@ function ideAuth(rawUrl, sessionToken) {
   // ["", "_oyren", "ide", "<token>", ...]
   const got = pathOf(rawUrl).split("/")[3]
   if (typeof got !== "string" || got.length === 0) return false
-  return tokenEq(decodeURIComponent(got), sessionToken)
+  // Guarded decode, same as portPath.js: a malformed escape (%zz) must fail auth, not throw a
+  // URIError that crashes the process on the HTTP path (WS is wrapped by safeUpgrade; this isn't).
+  let token
+  try { token = decodeURIComponent(got) } catch { token = got }
+  return tokenEq(token, sessionToken)
 }
 
 /**
