@@ -56,10 +56,13 @@ if [ "${INSTALL_OYREN_WELCOME:-1}" = "1" ]; then
   install_ext_from "${EXTRAS_DIR:?EXTRAS_DIR must point at the extracted editor-extras tarball}/extensions" oyren-welcome-extension
 fi
 
-# Mini localhost browser: a command (+ status bar item) that opens the built-in Simple Browser
-# pointed at a local dev-server port, no public route required. Sourced from this repo, like the
-# probe, since it doesn't need anything from the extras tarball.
+# Mini localhost-preview browser: a command (+ status bar item) that opens the built-in Simple
+# Browser at a session-origin URL for a local dev-server port. Installed from the extras tarball
+# like oyren-agent-extension: the fork's oyren/extensions/oyren-preview is the CANONICAL copy —
+# the boot overlay re-copies it over this dir at every editor start, so a repo copy here could
+# only drift. Sequencing: the extras tarball must contain oyren-preview before a bake (a fork-side
+# PR adds it; install_ext_from's warn-and-skip covers the gap).
 if [ "${INSTALL_OYREN_PREVIEW:-1}" = "1" ]; then
-  echo "==> Oyren preview (local, unpacked)"
-  install_ext_from "$HERE" oyren-preview
+  echo "==> Oyren preview (extras, unpacked)"
+  install_ext_from "${EXTRAS_DIR:?EXTRAS_DIR must point at the extracted editor-extras tarball}/extensions" oyren-preview
 fi
