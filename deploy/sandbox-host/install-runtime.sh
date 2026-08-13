@@ -39,10 +39,17 @@ install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential
 install -m 0755 "$APP_DIR/agent-term.sh" /usr/local/bin/oyren-agent-term
 # The native Chat panel's claude replacement once claudeCode.claudeProcessWrapper points at it
 # (openvscode-server's oyren/settings/machine-settings.json) — installed under its OWN name so it
-# never shadows the pnpm-global `claude` shim it wraps. Defaults to a pure passthrough; only relays
-# through the broker (started by server.js) when OYREN_CLAUDE_WRAPPER=1. See
-# CONTINUITY_DESIGN_PLAN.md Feature 2 and claude-process-wrapper.js.
-install -m 0755 "$APP_DIR/claude-process-wrapper.js" /usr/local/bin/oyren-claude-wrapper
+# never shadows the pnpm-global `claude` shim it wraps. v2: a contract-faithful relay — flag off
+# (OYREN_CLAUDE_WRAPPER != 1) it execs the extension's exact argv; flag on it hands the spawn to
+# the broker in server.js, which OWNS the child, so a closed panel's SIGKILL only drops a socket:
+# the in-flight turn completes and claude flushes its transcript for --resume. That is Level B
+# survival (turn-completion + resume-from-disk), NOT live panel reattach. Multi-file now, so it
+# lands as a lib dir plus a 2-line bin shim. See sandbox-runtime/claude-wrapper/main.js.
+install -d -m 0755 /usr/local/lib/oyren-claude-wrapper
+install -m 0644 "$APP_DIR"/claude-wrapper/*.js /usr/local/lib/oyren-claude-wrapper/
+printf '%s\n' '#!/usr/bin/env node' 'require("/usr/local/lib/oyren-claude-wrapper/main.js")' \
+  > /usr/local/bin/oyren-claude-wrapper
+chmod 0755 /usr/local/bin/oyren-claude-wrapper
 # Refresh the editor's extensions+settings from the rolling release — the no-rebake update path.
 # The swap helper is its escalation: when the extras manifest names a different server build, the
 # updater calls it to replace the whole /opt/openvscode-server tree.

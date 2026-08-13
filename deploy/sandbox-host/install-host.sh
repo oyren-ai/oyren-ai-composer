@@ -68,10 +68,12 @@ npm_config_fetch_retries=6
 npm_config_fetch_retry_mintimeout=10000
 npm_config_fetch_retry_maxtimeout=600000
 npm_config_fetch_timeout=600000
-# Kill switch for the native Chat panel's disconnect-survival wrapper+broker (CONTINUITY_DESIGN_PLAN.md
-# Feature 2). Default ON: the wrapper binary lands unconditionally (see install-runtime.sh) and the
-# companion openvscode-server machine-settings change points claudeCode.claudeProcessWrapper at it, so
-# a closed Chat panel tab hits the wrapper instead of SIGKILLing the real claude process.
+# Kill switch for the native Chat panel's claude wrapper+broker, v2: turn-completion survival — a
+# closed panel's kill only drops the wrapper's relay socket, and the broker-owned claude child
+# finishes its in-flight turn and flushes the transcript for --resume (no live reattach). The flag
+# alone changes nothing: the wrapper lands unconditionally (install-runtime.sh) but stays inert
+# until the editor's claudeCode.claudeProcessWrapper machine setting points at it, and that setting
+# ships separately, gated on a live end-to-end pass.
 OYREN_CLAUDE_WRAPPER=1
 EOF
 chmod 0644 /etc/oyren/host.env
