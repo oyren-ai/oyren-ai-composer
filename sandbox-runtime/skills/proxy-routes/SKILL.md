@@ -8,20 +8,21 @@ description: Manage the container's reverse proxy routes — map URL prefixes to
 ## How it works
 
 The Oyren sandbox exposes ONE port to the outside world (port 8080, mapped to the container's
-public HTTPS URL by DigitalOcean App Platform). A built-in reverse proxy routes incoming
-requests to internal services based on URL path prefixes.
+public HTTPS URL). A built-in reverse proxy routes incoming requests to internal services based
+on URL path prefixes.
 
 ```
 Public URL (HTTPS)
   └─→ Container :8080 (Node.js server)
-        ├── /_oyren/health        → health check (always 200)
-        ├── /_oyren/control/*     → control API (auth required)
-        ├── /_oyren/download      → file downloads from /workspace/.oyren-deliver/
-        ├── /_oyren/gateway       → gateway landing page (always available)
-        ├── /agent/*              → headless agent chat
-        ├── /terminal (WS)       → terminal PTY
-        ├── Configured routes     → proxy to internal ports (this skill)
-        └── /* (fallback)         → supervisor.exposedPort or gateway page
+        ├── /_oyren/health                → health check (always 200)
+        ├── /_oyren/control/*             → control API (auth required)
+        ├── /_oyren/download              → file downloads from /workspace/.oyren-deliver/
+        ├── /_oyren/gateway               → gateway landing page (always available)
+        ├── /_oyren/port/<token>/<port>/* → session-token-gated proxy to any local port
+        ├── /agent/*                      → headless agent chat
+        ├── /terminal (WS)               → terminal PTY
+        ├── Configured routes             → proxy to internal ports (this skill)
+        └── /* (fallback)                 → supervisor.exposedPort or gateway page
 ```
 
 ## Managing routes
@@ -55,24 +56,8 @@ the server watches it and picks up changes automatically (within ~2 seconds):
 }
 ```
 
-### Programmatic (control API)
-
-```bash
-# Add a route
-curl -X POST http://127.0.0.1:8080/_oyren/control/route/add \
-  -H "x-oyren-control-token: $CONTROL_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"prefix":"/studio","port":3000,"label":"Remotion Studio"}'
-
-# List routes
-curl -X POST http://127.0.0.1:8080/_oyren/control/route/list \
-  -H "x-oyren-control-token: $CONTROL_TOKEN"
-
-# Remove a route
-curl -X POST http://127.0.0.1:8080/_oyren/control/route/remove \
-  -H "x-oyren-control-token: $CONTROL_TOKEN" \
-  -d '{"prefix":"/studio"}'
-```
+Control-API curl examples, backward compatibility (`oyren expose`), and the download button
+are documented in [reference.md](reference.md).
 
 ## Route matching
 
@@ -86,41 +71,25 @@ curl -X POST http://127.0.0.1:8080/_oyren/control/route/remove \
 - **WebSockets**: route matching also applies to WebSocket upgrades, so apps like Remotion
   Studio (which use WS for hot-reload) work through the proxy.
 
-## Backward compatibility
+## Port proxy vs routes
 
-The old `oyren expose <port>` command still works. It sets the "fallback" port that handles
-requests when no configured route matches. Routes and the exposed port coexist:
+`http://localhost:<port>` NEVER works for the user — localhost in their browser is THEIR
+machine, not this container. Every URL you share must be on the session origin. Two ways:
 
-```bash
-# Old way (still works): expose a single default port
-oyren expose 3000
+- **A route** (preferred, shareable): `oyren route add /app 3000` serves the app at
+  `<session-origin>/app/` — clean paths, no token in the URL.
+- **The port proxy** (ad-hoc, token-gated): any local port is reachable with no route at
+  `<session-origin>/_oyren/port/<SESSION_TOKEN>/<port>/` — this is what the editor's Oyren
+  Preview uses. HTTP and WebSocket upgrades both pass through; the `/_oyren/port/<token>/<port>`
+  prefix is stripped (query preserved), and a bare `…/<port>` 302s to `…/<port>/`.
+  Wrong or missing token → 401; nothing listening on the port → 502.
 
-# New way: configure routes for multi-service setups
-oyren route add / 3000 "Frontend"
-oyren route add /api 3001 "Backend"
-```
+Both are pure prefix proxies: an app that emits absolute asset paths (`/static/app.js`)
+escapes the prefix and 404s — it needs a configured base path, or a `/` route.
 
 ## Gateway page
 
 The gateway page at `/_oyren/gateway` is always accessible — even when a catch-all route is
-configured. It shows:
-- All configured routes with live TCP status (listening / not listening)
-- A download button for files in `/workspace/.oyren-deliver/`
-- CLI instructions for managing routes
-- A table of reserved endpoints
-
-When no routes are configured AND no port is exposed, the gateway page is shown at `/`.
-
-## Download button
-
-Files staged in `/workspace/.oyren-deliver/` are served at `/_oyren/download`. The gateway
-page includes a direct link. All download URLs are **relative** (no hardcoded port), so they
-work on any host: `https://app-xxx.ondigitalocean.app`, `http://localhost:8080`, etc.
-
-To stage a file for download:
-```bash
-mkdir -p /workspace/.oyren-deliver
-cp my-output.mp4 /workspace/.oyren-deliver/
-```
-
-Then tell the user to visit the gateway page or click the Download button in the panel.
+configured. It shows all configured routes with live TCP status, a download button, CLI
+instructions, and a table of reserved endpoints. When no routes are configured AND no port
+is exposed, the gateway page is shown at `/`.

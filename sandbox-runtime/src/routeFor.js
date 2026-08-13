@@ -23,6 +23,8 @@ function routeFor(rawUrl) {
   // The browser IDE. Reserved rather than served from a "/" route so that a format app's
   // `oyren route add / <port>` cannot evict it mid-session — see ide.js for the full reasoning.
   if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
+  // Session-token-gated proxy to any loopback port — see portProxy.js for the URL contract.
+  if (isUnder(path, "/_oyren/port")) return { kind: "port" }
   if (isUnder(path, "/agent/current")) return { kind: "agent-current" }
   if (isUnder(path, "/agent/stream")) return { kind: "agent-stream" }
   if (isUnder(path, "/agent/interrupt")) return { kind: "agent-interrupt" }
@@ -39,6 +41,8 @@ function wsRouteFor(rawUrl) {
   if (isUnder(path, "/terminal")) return { kind: "terminal" }
   // The editor's own WebSocket (workbench ↔ extension host) lives under its base path.
   if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
+  // The port proxy carries WS upgrades too (dev-server HMR sockets) — before the app fallback.
+  if (isUnder(path, "/_oyren/port")) return { kind: "port" }
   return { kind: "app" }
 }
 
