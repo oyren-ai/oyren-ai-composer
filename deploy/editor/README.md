@@ -20,6 +20,7 @@ sudo ../sandbox-host/install-workspace-dir.sh   # the folder it opens
 | `INSTALL_DIR` | `/opt/openvscode-server` | |
 | `INSTALL_CLAUDE_EXTENSION` | `1` | Anthropic's extension, from Open VSX. |
 | `INSTALL_CHAT_PROBE` | `1` | Throwaway spike — set `0` for a real install. |
+| `INSTALL_OYREN_PREVIEW` | `1` | Localhost-preview mini browser command — see below. |
 
 Then run it with `../sandbox-host/start-editor.mjs`, or the `oyren-editor.service` unit in
 `../units/`.
@@ -79,3 +80,10 @@ A spike, not a feature. It asks whether a build with no Copilot will render the 
 for a third-party participant that declares itself the default — something no published build
 appears to do. Read its output in the "Oyren Chat Probe" output channel, then delete the directory
 and set `INSTALL_CHAT_PROBE=0`.
+
+## oyren-preview
+
+"Oyren: Open Preview" (Command Palette, or the status bar item) opens the built-in Simple Browser
+inside the editor pointed at `http://localhost:<port>` — a dev server running on the same sandbox,
+previewed without registering a public route. It offers ports already known via `oyren route`
+(`sandbox-runtime`'s route list, as a convenience) plus manual entry for anything not routed.
