@@ -18,6 +18,7 @@
 #   EXTRAS_DIR           extracted editor-extras tarball (required unless only the probe installs)
 #   INSTALL_CHAT_PROBE   1 installs the throwaway chat-view probe (default 0)
 #   INSTALL_OYREN_AGENT  1 (default) installs the Oyren agent chat participant
+#   INSTALL_OYREN_PREVIEW 1 (default) installs the localhost-preview mini browser command
 set -euo pipefail
 
 EDITOR_USER="${EDITOR_USER:-oyren}"
@@ -53,4 +54,12 @@ fi
 if [ "${INSTALL_OYREN_WELCOME:-1}" = "1" ]; then
   echo "==> Oyren welcome walkthrough (extras, unpacked)"
   install_ext_from "${EXTRAS_DIR:?EXTRAS_DIR must point at the extracted editor-extras tarball}/extensions" oyren-welcome-extension
+fi
+
+# Mini localhost browser: a command (+ status bar item) that opens the built-in Simple Browser
+# pointed at a local dev-server port, no public route required. Sourced from this repo, like the
+# probe, since it doesn't need anything from the extras tarball.
+if [ "${INSTALL_OYREN_PREVIEW:-1}" = "1" ]; then
+  echo "==> Oyren preview (local, unpacked)"
+  install_ext_from "$HERE" oyren-preview
 fi
