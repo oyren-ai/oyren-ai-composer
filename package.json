@@ -3,13 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Remote MCP server that launches user-supplied scripts in disposable containers.",
+  "description": "Sandbox droplet infrastructure: session runtime, browser editor, and the DO snapshot bake/edge services for oyren.ai.",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
     "sandbox": "tsx src/sandbox/main.ts",
     "buildjob": "tsx src/buildjob/main.ts",
     "edge": "tsx src/edge/main.ts",
@@ -18,13 +16,9 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "dockerode": "^4.0.2",
     "express": "^5.2.1",
-    "extract-zip": "^2.0.1",
-    "tsx": "^4.23.1",
-    "zod": "^3.25.76"
+    "tsx": "^4.23.1"
   },
   "devDependencies": {
     "@types/dockerode": "^4.0.1",

@@ -1,61 +1,39 @@
-# script-runner
+# oyren-ai-composer
 
-Remote **MCP server** that launches user-supplied scripts inside disposable Docker
-containers and tracks them asynchronously.
+Owns everything that runs on an oyren.ai session droplet, end to end: the golden VM snapshot every
+session boots from, the browser editor baked into it, the wildcard edge that routes
+`*.sandboxes.oyren.ai` to the right droplet, and the one-shot VMs that build/push agent images.
 
-An AI client submits a base64 one-liner (plus an optional base64 zip of source
-files) and a runtime. The call returns a `task_id` immediately; the script runs in
-a separate worker. The client polls for status and gets bounded stdout/stderr tails
-so results never overflow its context window.
+## Layout
 
-## Runtimes
-
-| value        | image             |
-| ------------ | ----------------- |
-| `node24`     | `node:24-slim`    |
-| `python3.8`  | `python:3.8-slim` |
-| `python3.13` | `python:3.13-slim`|
-
-The one-liner runs in `/workspace`, where the zip (if any) is extracted.
-
-## Transport & auth
-
-Stateless MCP Streamable HTTP at `POST /mcp`. Every request must carry
-`Authorization: Bearer <SCRIPT_RUNNER_TOKEN>`. `GET /healthz` is open.
-
-## Tools
-
-- **`run_script`** — `{ runtime, command_base64, zip_base64?, timeout_seconds? }` →
-  `{ task_id }`. Enqueues and returns instantly. `timeout_seconds` defaults to 300
-  (server-capped).
-- **`get_task_status`** — `{ task_id, tail_bytes? }` → `{ state, exit_code, reason,
-  runtime_seconds, seconds_since_last_output, stdout_tail, stderr_tail, ... }`.
-  `state` ∈ `queued | running | succeeded | failed | killed | timed-out`. Use
-  `seconds_since_last_output` to detect a stuck task; `*_truncated` flags mark
-  clipped tails.
-- **`kill_task`** — `{ task_id }` → stops a queued or running task.
-
-## Safety & limits
-
-Each task runs in its own container: `CapDrop: ALL`, `no-new-privileges`, memory /
-CPU / PID caps, and an isolated bridge network (internet reachable, app not). Hard
-wall-clock timeouts kill runaways; a reaper enforces timeouts and GCs old task
-dirs; on restart, in-flight tasks are marked `killed` and orphan containers removed.
+- **`sandbox-runtime/`** — the Node process that runs directly on every session droplet: the
+  `.oyren-routes.json` / `oyren` CLI reverse-proxy and control API (`/_oyren/control/*`) an agent
+  uses to expose a port or manage routes. See `sandbox-runtime/README.md`.
+- **`deploy/editor/`** — installs and brands openvscode-server into the snapshot, plus first-party
+  extensions (`oyren-preview`, and the `oyren-chat-probe` spike). See `deploy/editor/README.md`.
+  Extension sources not in this repo (`oyren-agent-extension`, `oyren-welcome-extension`) come from
+  a separate rolling release the fork publishes.
+- **`deploy/edge/`** — the wildcard-TLS Caddy host that terminates `*.sandboxes.oyren.ai` and
+  proxies each subdomain to its droplet's private IP. See `deploy/edge/README.md`.
+- **`deploy/bake/`** — one-time/manual pipeline that bakes the golden DO snapshot
+  (`bake-base-snapshot.sh`) session droplets boot from, plus toolchain-variant derivations (e.g.
+  Lean). Not triggered by CI — re-run by hand when something baked needs to change.
+- **`deploy/units/`** — the four systemd units baked into every droplet, each a no-op until
+  cloud-init writes its own `/etc/oyren/*.env`: `oyren-sandbox` (the session runtime),
+  `oyren-editor` (the browser editor), `oyren-edge` (the route-admin API, on the dedicated edge
+  droplet only), `oyren-build` (one-shot image-build VMs).
+- **`src/{sandbox,edge,buildjob}/`** + **`src/util/`** — this repo's own TypeScript sources for the
+  edge and build service modes (compiled via `tsc -p tsconfig.build.json` into what the systemd
+  units above run).
+- **`terraform/`** — DigitalOcean infra for a separate self-hosted stack; see `terraform/README.md`.
 
 ## Local development
 
 ```bash
 npm install
-cp .env.example .env      # set SCRIPT_RUNNER_TOKEN, e.g. openssl rand -hex 32
-export TASKS_DIR=$PWD/tasks-data
-npm run dev               # requires a local Docker daemon
+npm run typecheck
+npm test
 ```
 
-`npm run typecheck` runs `tsc --noEmit`.
-
-## Deployment
-
-A Linux host behind Caddy (automatic TLS). One-time: `deploy/setup-host.sh`.
-Each push to `main` triggers `.github/workflows/deploy.yml`, which SSHes in and
-runs `deploy/deploy.sh` (`git reset --hard origin/main` +
-`docker compose up -d --build`). The bearer token lives only in the host's `.env`.
+`npm run sandbox` / `npm run edge` / `npm run buildjob` run each mode's entrypoint directly (each
+expects its own `/etc/oyren/*.env`-shaped config — see `src/{sandbox,edge,buildjob}/env.ts`).
