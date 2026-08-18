@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kiosk policy for the streamed-Zed session: every application window opens maximized,
+     undecorated and focused, so Zed deterministically fills the VNC framebuffer with no titlebar
+     in the stream and no wmctrl race. Sections omitted here fall back to openbox's built-in
+     defaults. Installed to /etc/oyren/zed/rc.xml by install-zed.sh; start-zed.mjs launches
+     openbox with `-config-file` pointing here. -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <applications>
+    <application class="*">
+      <maximized>yes</maximized>
+      <decor>no</decor>
+      <focus>yes</focus>
+    </application>
+  </applications>
+</openbox_config>

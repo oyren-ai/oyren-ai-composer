@@ -32,3 +32,6 @@ WorkingDirectory=/workspace
 
 Restart=always
 RestartSec=3
+# The launcher exits 0 on OYREN_EDITOR=0 sessions (zed-web sets it always). Restart=always would
+# respawn that clean exit every 3s for the droplet's lifetime; keep crash-restarts, skip exit 0.
+RestartPreventExitStatus=0

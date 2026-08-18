@@ -16,8 +16,9 @@ session boots from, the browser editor baked into it, the wildcard edge that rou
 - **`deploy/edge/`** — the wildcard-TLS Caddy host that terminates `*.sandboxes.oyren.ai` and
   proxies each subdomain to its droplet's private IP. See `deploy/edge/README.md`.
 - **`deploy/bake/`** — one-time/manual pipeline that bakes the golden DO snapshot
-  (`bake-base-snapshot.sh`) session droplets boot from, plus toolchain-variant derivations (e.g.
-  Lean). Not triggered by CI — re-run by hand when something baked needs to change.
+  (`bake-base-snapshot.sh`) session droplets boot from, plus variant derivations (Lean via
+  `deploy/lean/`, streamed Zed via `deploy/zed/` — KasmVNC + openbox + lavapipe + a pinned Zed,
+  with its `oyren-zed.service` gated on the session env). Not triggered by CI — re-run by hand.
 - **`deploy/units/`** — the four systemd units baked into every droplet, each a no-op until
   cloud-init writes its own `/etc/oyren/*.env`: `oyren-sandbox` (the session runtime),
   `oyren-editor` (the browser editor), `oyren-edge` (the route-admin API, on the dedicated edge

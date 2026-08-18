@@ -25,6 +25,8 @@ function routeFor(rawUrl) {
   if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
   // Session-token-gated proxy to any loopback port — see portProxy.js for the URL contract.
   if (isUnder(path, "/_oyren/port")) return { kind: "port" }
+  // The streamed-Zed (KasmVNC) stream — see zedProxy.js for the URL contract.
+  if (isUnder(path, "/_oyren/zed")) return { kind: "zed" }
   if (isUnder(path, "/agent/current")) return { kind: "agent-current" }
   if (isUnder(path, "/agent/stream")) return { kind: "agent-stream" }
   if (isUnder(path, "/agent/interrupt")) return { kind: "agent-interrupt" }
@@ -43,6 +45,8 @@ function wsRouteFor(rawUrl) {
   if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
   // The port proxy carries WS upgrades too (dev-server HMR sockets) — before the app fallback.
   if (isUnder(path, "/_oyren/port")) return { kind: "port" }
+  // The zed stream is WebSocket-first (KasmVNC) — its WS side matters more than its HTTP side.
+  if (isUnder(path, "/_oyren/zed")) return { kind: "zed" }
   return { kind: "app" }
 }
 

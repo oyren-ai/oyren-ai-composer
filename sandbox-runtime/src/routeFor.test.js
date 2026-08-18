@@ -5,6 +5,8 @@ const { routeFor, wsRouteFor } = require("./routeFor")
 test("health path is its own kind and ignores query strings", () => {
   assert.equal(routeFor("/_oyren/health").kind, "health")
   assert.equal(routeFor("/_oyren/health?x=1").kind, "health")
+  assert.equal(routeFor("/_oyren/zed/tok/vnc.html").kind, "zed")
+  assert.equal(routeFor("/_oyren/zedx").kind, "app") // not a prefix match
 })
 
 test("control namespace matches the base and sub-paths", () => {
@@ -82,6 +84,7 @@ test("the port proxy gets its own kind in BOTH http and ws dispatch", () => {
   assert.equal(routeFor("/_oyren/port/tok/3000/assets/app.js?v=1").kind, "port")
   assert.equal(routeFor("/_oyren/port").kind, "port")
   assert.equal(wsRouteFor("/_oyren/port/tok/3000/ws").kind, "port")
+  assert.equal(wsRouteFor("/_oyren/zed/tok/websockify").kind, "zed")
 })
 
 test("/_oyren/portxyz is not a prefix match — it stays the user app", () => {

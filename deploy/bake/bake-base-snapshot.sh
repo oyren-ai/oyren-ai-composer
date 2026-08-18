@@ -61,4 +61,5 @@ IMAGE_ID="$(snapshot_droplet "$DROPLET_ID" "$SNAPSHOT_NAME")"
 
 echo "✅ base snapshot ready: $SNAPSHOT_NAME (image id: $IMAGE_ID)"
 echo "   Set DROPLET_SNAPSHOT_ID=$IMAGE_ID in the orchestrator."
-echo "   Then: BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-lean-snapshot.sh  for the Lean variant."
+echo "   Then: BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-lean-snapshot.sh  for the Lean variant,"
+echo "   or:   BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-zed-snapshot.sh   for the streamed-Zed variant."

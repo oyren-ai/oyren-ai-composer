@@ -1,0 +1,47 @@
+# Streamed Zed for a zed-web session: KasmVNC's X server + openbox + real Zed, one supervised
+# stack, streamed to the browser through the sandbox router (/_oyren/zed/<token>/ → 127.0.0.1:6090).
+#
+# Deliberately NO [Install] section — pulled in solely by Wants= from oyren-sandbox.service via the
+# 10-zed.conf drop-in, same reasoning as oyren-editor.service: enabling at multi-user.target would
+# race cloud-init's write_files on /etc/oyren/sandbox.env.
+#
+# The OYREN_ZED=1 gate CANNOT live here: it arrives inside CONTAINER_ENV_B64 (see sessionEnv.mjs),
+# which systemd's ConditionEnvironment can never see. The launcher decodes and gates, exiting 0 on
+# non-zed sessions — and Restart=on-failure (NOT always) is what makes that clean exit final
+# instead of a 3-second respawn loop.
+#
+# HARD REQUIREMENT (zed-snapshot-bake.md): a VNC client disconnect must never touch this unit.
+# Nothing here watches connections — the launcher pins Xvnc's MaxDisconnectionTime/MaxIdleTime/
+# MaxConnectionTime to 0 (never terminate), so closing the browser only drops the WebSocket while
+# Zed and its agent panel keep working until the droplet dies.
+[Unit]
+Description=Oyren streamed Zed (KasmVNC + openbox + Zed)
+After=network-online.target
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+# host.env is baked (PATH, locale); sandbox.env is per-session from cloud-init and carries
+# CONTAINER_ENV_B64, which the launcher decodes (OYREN_ZED, SESSION_TOKEN, the agent's API keys).
+EnvironmentFile=/etc/oyren/host.env
+EnvironmentFile=/etc/oyren/sandbox.env
+Environment=ZED_ALLOW_EMULATED_GPU=1
+ExecStart=/usr/bin/node /usr/local/lib/oyren/start-zed.mjs
+
+User=oyren
+# The /workspace SYMLINK, same as oyren-editor.service: systemd does not expand EnvironmentFile
+# vars in WorkingDirectory. Zed's actual folder comes from the launcher's argv.
+WorkingDirectory=/workspace
+# A User= service has no logind session, so no /run/user/<uid>. Give the stack a private
+# XDG_RUNTIME_DIR instead — Zed needs one for its IPC socket.
+RuntimeDirectory=oyren-zed
+RuntimeDirectoryMode=0700
+
+# mixed: `systemctl stop` SIGTERMs only the launcher, whose handler shuts the children down in
+# order and exits 0. control-group would signal the children too, racing their exit events against
+# the launcher's own SIGTERM handler and sometimes marking a deliberate stop "failed".
+KillMode=mixed
+
+# on-failure, not always: a clean gate exit (non-zed session) must stay down; a dead Xvnc, openbox
+# or Zed exits 1 and restarts the whole stack.
+Restart=on-failure
+RestartSec=3
