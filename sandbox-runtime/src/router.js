@@ -25,6 +25,7 @@ const { handleRunsPage } = require("./runsPage")
 const { handleGateway } = require("./gateway")
 const { handleAppRoute } = require("./routerApp")
 const { handlePortProxy } = require("./portProxy")
+const { handleZedProxy } = require("./zedProxy")
 const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR, PORT } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
 const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
@@ -85,6 +86,9 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
     // Session-token-gated proxy to any loopback port — how the editor's Oyren Preview (and any
     // session-origin URL the agent hands out) reaches an unrouted dev server. See portProxy.js.
     if (route.kind === "port") return handlePortProxy(req, res, { sessionToken: SESSION_TOKEN, selfPort: PORT })
+    // The streamed-Zed stream (Next's ZedStreamView iframe) — token-gated like the port proxy,
+    // prefix-stripped onto the KasmVNC listener. See zedProxy.js.
+    if (route.kind === "zed") return handleZedProxy(req, res, { sessionToken: SESSION_TOKEN })
     if (route.kind === "static") return serveStatic(res, STATIC_DIR, (req.url || "/").split("?")[0])
 
     // Everything else is the user's app: configured routes → exposedPort → gateway page.

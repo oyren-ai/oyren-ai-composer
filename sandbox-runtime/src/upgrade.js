@@ -5,6 +5,7 @@ const { wsRouteFor } = require("./routeFor")
 const { proxyWs } = require("./proxyWs")
 const { IDE_PORT, ideAuth } = require("./ide")
 const { handlePortProxyUpgrade } = require("./portProxy")
+const { handleZedProxyUpgrade } = require("./zedProxy")
 
 // The WS upgrade handler runs outside any request try/catch — a throw here (bad proxy target, parse
 // error) would become an uncaughtException and kill every session. Guard it so one bad upgrade only
@@ -45,6 +46,10 @@ function createUpgradeHandler({ termWss, routes, supervisor }) {
     // before the app fallback so a catch-all route can never shadow it. See portProxy.js.
     if (route.kind === "port") {
       return handlePortProxyUpgrade(req, socket, head, { sessionToken: cfg.SESSION_TOKEN, selfPort: cfg.PORT })
+    }
+    // The streamed-Zed stream — KasmVNC is WebSocket-first, so this is its load-bearing path.
+    if (route.kind === "zed") {
+      return handleZedProxyUpgrade(req, socket, head, { sessionToken: cfg.SESSION_TOKEN })
     }
     // WebSocket: try routes first, then supervisor.exposedPort
     if (routes) {
