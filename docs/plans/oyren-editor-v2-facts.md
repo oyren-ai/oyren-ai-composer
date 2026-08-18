@@ -12,7 +12,7 @@ Companion to `oyren-editor-v2.md`. Everything here was verified against the tag
   Fresh clone: `git clone --depth 50 -b oyren/1.109 git@github.com:oyren-ai/openvscode-server.git`.
 - Release asset: `https://github.com/oyren-ai/openvscode-server/releases/download/openvscode-server-v<V>/openvscode-server-v<V>-linux-x64.tar.gz`.
 - Snapshots live now: base `239918869` (fork editor + all-modes extension). Pins go in the LOCAL
-  orchestrator `.env.local` (`DROPLET_SNAPSHOT_ID`, `DROPLET_SNAPSHOT_ID_LEAN`), restart to apply.
+  orchestrator `.env.local` (`DROPLET_SNAPSHOT_ID`, `_LEAN`, `_ZED`), restart to apply.
 
 ## The one architectural fact that explains everything
 **product.json is INLINED into workbench.js at build time** (`build/gulpfile.reh.ts:447` →
@@ -87,8 +87,10 @@ change (branding strings, chat gating) must be a fork commit + rebuild. That is 
    `-oyren.` version auto-selects our fork's release URL).
 3. Bake (~15 min, sanctioned): `cd deploy/bake && DO_API_TOKEN="$(doctl auth token)"
    DO_SSH_KEY_ID=49858195 DO_REGION=fra1 ./bake-base-snapshot.sh`; then
-   `BASE_SNAPSHOT_ID=<new> ./derive-lean-snapshot.sh`. Pin both ids in the local orchestrator
-   `.env.local`, restart it, launch a session from localhost:3000 (do NOT hand-create droplets).
+   `BASE_SNAPSHOT_ID=<new> ./derive-lean-snapshot.sh` and `… ./derive-zed-snapshot.sh` (streamed
+   Zed — verify its stream on an xl session; the installer's asserts gate the pinned Zed/KasmVNC).
+   Pin the ids in the local orchestrator `.env.local`, restart it, launch a session from
+   localhost:3000 (do NOT hand-create droplets).
 4. Extension/runtime-only changes need only steps 3; fork changes need 1-3.
 
 ## House rules
