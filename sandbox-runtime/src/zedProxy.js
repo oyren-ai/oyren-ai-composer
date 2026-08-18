@@ -4,8 +4,13 @@
 //   <session-origin>/_oyren/zed/<SESSION_TOKEN>/<rest>?<query>
 // proxies HTTP requests AND WebSocket upgrades to 127.0.0.1:6090 with the `/_oyren/zed/<token>`
 // prefix STRIPPED. KasmVNC has no --server-base-path equivalent, so unlike /_oyren/ide the prefix
-// must never reach it; its web client uses relative asset URLs, which is what makes the
+// must never reach it; its web client uses relative ASSET URLs, which is what makes the
 // stripped-prefix form workable (same contract as /_oyren/port, minus the port segment).
+//  - The client's WEBSOCKET is NOT relative: it builds `wss://<host>/<path-setting>` at the origin
+//    root (default path "websockify"), which lands outside the prefix and dies on the app fallback.
+//    The page URL must carry `?path=_oyren/zed/<token>/websockify` (the client reads query params
+//    over defaults); a bare page load without a query 302s to that form so a directly-opened
+//    stream URL works without the embedding frontend knowing the client's query API.
 //  - Token at path segment 3, validated exactly like /_oyren/ide/<token> (constant-time compare,
 //    fails closed 401 when SESSION_TOKEN is unset or mismatched). The KasmVNC listener itself runs
 //    with no auth on loopback — this token is its ONLY gate, mirroring the editor's 3131.
@@ -36,10 +41,11 @@ function parseZedPath(rawUrl) {
   const query = qi === -1 ? "" : raw.slice(qi)
   if (path !== ZED_PREFIX && !path.startsWith(ZED_PREFIX + "/")) return null
   const segs = path.split("/") // ["", "_oyren", "zed", "<token>", ...rest]
-  const token = decode(segs[3] || "")
+  const rawToken = segs[3] || "" // as received (still percent-encoded) — for building redirects
+  const token = decode(rawToken)
   const needsSlash = segs.length === 4 // exactly "…/zed/<token>" — no rest, no trailing slash
   const downstream = "/" + segs.slice(4).join("/") + query
-  return { token, downstream, needsSlash }
+  return { token, rawToken, downstream, needsSlash }
 }
 
 /** HTTP side. `zedPort` is injectable for tests; the router passes nothing and gets ZED_PORT. */
@@ -53,6 +59,13 @@ function handleZedProxy(req, res, { sessionToken, zedPort = ZED_PORT }) {
     const qi = req.url.indexOf("?")
     const [path, query] = qi === -1 ? [req.url, ""] : [req.url.slice(0, qi), req.url.slice(qi)]
     res.writeHead(302, { location: path + "/" + query })
+    return res.end()
+  }
+  // Bare page load (no query at all) → 302 injecting the client's websocket path (header comment).
+  // The value is encodeURIComponent'd once because the client decodes it exactly once.
+  if (p.downstream === "/" && req.method === "GET") {
+    const wsPath = `${ZED_PREFIX.slice(1)}/${p.rawToken}/websockify`
+    res.writeHead(302, { location: `${ZED_PREFIX}/${p.rawToken}/?path=${encodeURIComponent(wsPath)}` })
     return res.end()
   }
   req.url = p.downstream // proxyHttp forwards req.url as the upstream path
