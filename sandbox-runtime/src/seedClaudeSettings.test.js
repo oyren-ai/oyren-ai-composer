@@ -16,6 +16,8 @@ test("seeds settings.json with bypassPermissions mode AND the disclaimer-skip fl
   // Mode alone is silently downgraded to "default" — both keys are required for unattended bypass.
   assert.equal(json.permissions.defaultMode, "bypassPermissions")
   assert.equal(json.skipDangerousModePermissionPrompt, true)
+  // Self-update can never succeed on a pinned root-installed CLI — silence it for every session.
+  assert.equal(json.env.DISABLE_AUTOUPDATER, "1")
 })
 
 test("creates ~/.claude when it does not exist yet", () => {
@@ -31,7 +33,7 @@ test("merges into an existing settings.json without clobbering other keys", () =
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(
     path.join(dir, "settings.json"),
-    JSON.stringify({ model: "keep-me", permissions: { allow: ["Bash(ls:*)"] } }),
+    JSON.stringify({ model: "keep-me", permissions: { allow: ["Bash(ls:*)"] }, env: { FOO: "bar" } }),
   )
   seedClaudeSettings({ home })
   const json = readSettings(home)
@@ -39,4 +41,6 @@ test("merges into an existing settings.json without clobbering other keys", () =
   assert.deepEqual(json.permissions.allow, ["Bash(ls:*)"]) // existing permissions sub-key preserved
   assert.equal(json.permissions.defaultMode, "bypassPermissions") // new mode added
   assert.equal(json.skipDangerousModePermissionPrompt, true)
+  assert.equal(json.env.FOO, "bar") // existing env keys preserved
+  assert.equal(json.env.DISABLE_AUTOUPDATER, "1")
 })
