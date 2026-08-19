@@ -62,6 +62,11 @@ const args = [
   '--disable-workspace-trust',
   ...(basePath ? ['--server-base-path', basePath] : []),
   '--default-folder', WORKSPACE_DIR,
+  // Keep remote extension hosts alive when the browser disconnects, so agent turns survive a
+  // closed tab (fork flag, server ≥1.109.5-oyren.8). Env-gated OFF by default: older baked
+  // servers don't know the flag, so flip OYREN_PERSIST_EXTHOST=1 only in lockstep with the
+  // extras server-version bump that ships oyren.8.
+  ...(env.OYREN_PERSIST_EXTHOST === '1' ? ['--persist-exthost'] : []),
   // Our own extensions only. A chat participant that declares itself the DEFAULT one — which is what
   // makes it own the Chat view rather than answer to an @mention — needs the defaultChatParticipant
   // and chatProvider proposals at 1.109. Granted per extension id, never globally.
