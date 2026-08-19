@@ -56,6 +56,7 @@ const args = [
   '--port', String(PORT),
   '--without-connection-token', // the router's path token is the gate
   '--disable-workspace-trust',
+  '--persist-exthost', // requires fork tag -oyren.8+ (server must understand this flag) — see commit msg
   ...(basePath ? ['--server-base-path', basePath] : []),
   '--default-folder', WORKSPACE_DIR,
   // Our own extensions only. A chat participant that declares itself the DEFAULT one — which is what
