@@ -26,6 +26,7 @@ const { handleGateway } = require("./gateway")
 const { handleAppRoute } = require("./routerApp")
 const { handlePortProxy } = require("./portProxy")
 const { handleZedProxy } = require("./zedProxy")
+const { handleZedClipboard } = require("./zedClipboard")
 const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR, PORT } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
 const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
@@ -89,6 +90,9 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
     // The streamed-Zed stream (Next's ZedStreamView iframe) — token-gated like the port proxy,
     // prefix-stripped onto the KasmVNC listener. See zedProxy.js.
     if (route.kind === "zed") return handleZedProxy(req, res, { sessionToken: SESSION_TOKEN })
+    // Image → clipboard for the streamed-Zed session: the Oyren UI POSTs a pasted image here and we
+    // put it on Zed's X clipboard (+ optional auto Ctrl+V). Token-gated like the zed stream itself.
+    if (route.kind === "zed-clipboard") return handleZedClipboard(req, res, { sessionToken: SESSION_TOKEN })
     if (route.kind === "static") return serveStatic(res, STATIC_DIR, (req.url || "/").split("?")[0])
 
     // Everything else is the user's app: configured routes → exposedPort → gateway page.

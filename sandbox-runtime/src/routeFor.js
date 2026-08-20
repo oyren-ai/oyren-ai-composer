@@ -25,6 +25,10 @@ function routeFor(rawUrl) {
   if (isUnder(path, "/_oyren/ide")) return { kind: "ide" }
   // Session-token-gated proxy to any loopback port — see portProxy.js for the URL contract.
   if (isUnder(path, "/_oyren/port")) return { kind: "port" }
+  // Image → clipboard injection for the streamed-Zed session (see zedClipboard.js). MUST precede the
+  // "/_oyren/zed" test: "/_oyren/zed-clipboard" is not under "/_oyren/zed" (no "zed/" boundary), but
+  // ordering it first keeps the two intents visibly distinct.
+  if (isUnder(path, "/_oyren/zed-clipboard")) return { kind: "zed-clipboard" }
   // The streamed-Zed (KasmVNC) stream — see zedProxy.js for the URL contract.
   if (isUnder(path, "/_oyren/zed")) return { kind: "zed" }
   if (isUnder(path, "/agent/current")) return { kind: "agent-current" }

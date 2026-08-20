@@ -9,6 +9,13 @@ test("health path is its own kind and ignores query strings", () => {
   assert.equal(routeFor("/_oyren/zedx").kind, "app") // not a prefix match
 })
 
+test("zed-clipboard is its own kind and never shadows the zed stream", () => {
+  assert.equal(routeFor("/_oyren/zed-clipboard/tok").kind, "zed-clipboard")
+  assert.equal(routeFor("/_oyren/zed-clipboard/tok?autopaste=0").kind, "zed-clipboard")
+  // "/_oyren/zed-clipboard" is NOT under "/_oyren/zed" (no "zed/" boundary) — the stream still routes.
+  assert.equal(routeFor("/_oyren/zed/tok/websockify").kind, "zed")
+})
+
 test("control namespace matches the base and sub-paths", () => {
   assert.equal(routeFor("/_oyren/control").kind, "control")
   assert.equal(routeFor("/_oyren/control/expose").kind, "control")

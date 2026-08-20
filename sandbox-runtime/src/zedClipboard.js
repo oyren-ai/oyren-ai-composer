@@ -1,0 +1,120 @@
+// Session-token-gated endpoint that pushes an image into the streamed-Zed session's clipboard.
+//
+// WHY THIS EXISTS: the Zed stream (ZedStreamView in oyren-ai-next) is a KasmVNC web client in an
+// iframe served from the CONTAINER's origin — a different origin than the Oyren app around it. So the
+// app can never capture a Ctrl+V that happens over the stream, and KasmVNC's own clipboard bridge is
+// text-only in practice. Instead the Oyren UI captures the pasted/dropped image in its OWN chrome and
+// POSTs the bytes here; we own the X11 CLIPBOARD selection on the Zed display via xclip, then send
+// Ctrl+V with xdotool so it lands in whatever Zed surface has focus (typically the agent panel input).
+//
+// URL CONTRACT:
+//   <session-origin>/_oyren/zed-clipboard/<SESSION_TOKEN>[?autopaste=0]
+//   - POST only; the body is the raw image (Content-Type image/png|jpeg|gif|webp). Max 10 MiB.
+//   - Token at path segment 3, constant-time compared exactly like the zed proxy (fails closed 401).
+//   - autopaste=0 sets the clipboard but skips the synthetic Ctrl+V (the UI then tells the user to
+//     paste manually). Default: paste. The clipboard is ALWAYS set; auto-paste is best-effort and
+//     never fails the request, since a wrong-focus paste must not lose the image the user can still
+//     Ctrl+V by hand.
+const { spawn } = require("child_process")
+const { tokenEq } = require("./sessionAuth")
+
+// The KasmVNC X display start-zed.mjs pins (":90" → /tmp/.X11-unix/X90). Same default here so the
+// clipboard lands on the display the user is actually looking at.
+const ZED_DISPLAY = process.env.OYREN_ZED_DISPLAY || ":90"
+const MAX_BYTES = 10 * 1024 * 1024
+// xclip needs a concrete target atom; these are the image types a browser clipboard/DataTransfer
+// realistically produces. Anything else is rejected rather than guessed at.
+const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+
+const decode = (s) => { try { return decodeURIComponent(s) } catch { return s } }
+
+/** Token from `/_oyren/zed-clipboard/<token>` — segment 3, "" when absent (auth then rejects it). */
+function tokenFromUrl(rawUrl) {
+  const path = String(rawUrl || "/").split("?")[0]
+  return decode(path.split("/")[3] || "")
+}
+
+function wantsAutopaste(rawUrl) {
+  try {
+    return new URL(rawUrl || "/", "http://localhost").searchParams.get("autopaste") !== "0"
+  } catch {
+    return true
+  }
+}
+
+/** MIME off the Content-Type header, params stripped and lowercased. */
+function mimeOf(req) {
+  return String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase()
+}
+
+/**
+ * Set the CLIPBOARD selection to `buf` (owned by xclip's background process), then optionally send
+ * Ctrl+V. Injectable `runner` for tests — defaults to spawning the real binaries on ZED_DISPLAY.
+ * Calls back with an Error only when the clipboard itself could not be set; auto-paste failures are
+ * swallowed (clipboard is already set, the user can paste manually).
+ */
+function injectClipboard(buf, mime, { autopaste, runner = defaultRunner }, cb) {
+  runner("xclip", ["-selection", "clipboard", "-t", mime], buf, (err) => {
+    if (err) return cb(err)
+    if (!autopaste) return cb(null)
+    // --clearmodifiers so a modifier the user is still holding on the VNC side can't corrupt the
+    // chord. No window search: Zed runs maximized under openbox as the only app, so it has focus.
+    runner("xdotool", ["key", "--clearmodifiers", "ctrl+v"], null, () => cb(null))
+  })
+}
+
+/** Spawn `cmd args` on the Zed display, feed `input` (Buffer|null) to stdin, resolve on clean exit. */
+function defaultRunner(cmd, args, input, done) {
+  let child
+  try {
+    child = spawn(cmd, args, { env: { ...process.env, DISPLAY: ZED_DISPLAY } })
+  } catch (e) {
+    return done(e)
+  }
+  let stderr = ""
+  child.stderr.on("data", (d) => { stderr += d.toString("utf8") })
+  child.on("error", (e) => done(e)) // ENOENT: the binary isn't in the snapshot
+  child.on("exit", (code) => done(code === 0 ? null : new Error(`${cmd} exited ${code}: ${stderr.trim()}`)))
+  // EPIPE if the child died before draining stdin — the exit handler already carries the real reason.
+  child.stdin.on("error", () => {})
+  if (input) child.stdin.end(input)
+  else child.stdin.end()
+}
+
+function handleZedClipboard(req, res, { sessionToken, runner }) {
+  const send = (code, body) => {
+    res.writeHead(code, { "content-type": "application/json" })
+    res.end(JSON.stringify(body))
+  }
+  if (req.method !== "POST") return send(405, { error: "method not allowed" })
+  if (!tokenEq(tokenFromUrl(req.url), sessionToken)) return send(401, { error: "unauthorized" })
+  const mime = mimeOf(req)
+  if (!ALLOWED_MIME.has(mime)) return send(415, { error: "unsupported media type" })
+
+  const chunks = []
+  let size = 0
+  let aborted = false
+  req.on("data", (c) => {
+    if (aborted) return
+    size += c.length
+    if (size > MAX_BYTES) {
+      aborted = true
+      send(413, { error: "image too large" })
+      req.destroy()
+      return
+    }
+    chunks.push(c)
+  })
+  req.on("end", () => {
+    if (aborted) return
+    const buf = Buffer.concat(chunks)
+    if (buf.length === 0) return send(400, { error: "empty body" })
+    injectClipboard(buf, mime, { autopaste: wantsAutopaste(req.url), runner }, (err) => {
+      if (err) return send(502, { error: err.message })
+      send(200, { ok: true, bytes: buf.length })
+    })
+  })
+  req.on("error", () => { if (!aborted) send(400, { error: "read error" }) })
+}
+
+module.exports = { handleZedClipboard, injectClipboard, tokenFromUrl, wantsAutopaste, mimeOf, ALLOWED_MIME }

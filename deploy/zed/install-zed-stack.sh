@@ -17,12 +17,15 @@ ZED_TARBALL_URL="${ZED_TARBALL_URL:-https://github.com/zed-industries/zed/releas
 
 # openbox: the WM. dbus: dbus-run-session for Zed's private bus. mesa-vulkan-drivers: lavapipe;
 # libvulkan1: the loader; vulkan-tools: bake-time proof lavapipe enumerates. libxkbcommon/asound:
-# Zed's dynamic-link deps a server image lacks. fontconfig+dejavu: fallback glyphs.
-echo "==> apt packages (openbox, dbus, lavapipe, X client libs)"
+# Zed's dynamic-link deps a server image lacks. fontconfig+dejavu: fallback glyphs. xclip+xdotool:
+# the image-paste bridge (zedClipboard.js) — xclip owns the X CLIPBOARD selection for a pasted image,
+# xdotool sends the synthetic Ctrl+V into focused Zed.
+echo "==> apt packages (openbox, dbus, lavapipe, X client libs, clipboard tools)"
 $APT update -qq
 $APT install -y -qq --no-install-recommends \
   openbox dbus mesa-vulkan-drivers libvulkan1 vulkan-tools \
-  libxkbcommon-x11-0 libasound2t64 fontconfig fonts-dejavu-core
+  libxkbcommon-x11-0 libasound2t64 fontconfig fonts-dejavu-core \
+  xclip xdotool
 
 echo "==> KasmVNC ${KASMVNC_VERSION}"
 curl -fsSL -o /tmp/kasmvncserver.deb "$KASMVNC_DEB_URL"
