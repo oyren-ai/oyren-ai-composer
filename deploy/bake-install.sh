@@ -44,6 +44,13 @@ if [ "${SANDBOX_HOST:-1}" = "1" ]; then
   bash "$APP_DIR/deploy/sandbox-host/install-agents.sh"
   bash "$APP_DIR/deploy/sandbox-host/install-runtime.sh"
   bash "$APP_DIR/deploy/editor/install-editor.sh"
+  # Streamed Zed, in the SAME image as the browser editor. It used to be a derived variant, but a
+  # session can now switch between the two surfaces while it runs (editorSurface.js), which needs
+  # both present. It costs nothing that matters: ~1.5GB inside the base's ~13.5GB headroom, on the
+  # same 25GB s-1vcpu-1gb bake droplet, so the image's droplet floor is unchanged — and one image
+  # instead of two ends the drift where a fix landed in the base and the zed variant lagged a
+  # derive behind. Zed stays xl+ gated at RUNTIME by the orchestrator, where CPU is knowable.
+  bash "$APP_DIR/deploy/zed/install-zed.sh"
 fi
 
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"

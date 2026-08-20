@@ -1,15 +1,20 @@
 // systemd ExecStart for the streamed-Zed stack (oyren-zed.service): KasmVNC's X server + openbox
-// + Zed, one supervised process tree. Runs only when the session env carries OYREN_ZED=1 — the
-// orchestrator sets it solely for zed-web launches, so this image is inert everywhere else.
+// + Zed, one supervised process tree. Runs only while this session's editor surface IS Zed — the
+// launch env picks the first one (OYREN_ZED=1 for a zed-web launch) and the control action
+// `editor/switch` changes it later, so the unit is inert on a session showing VS Code.
 import { spawn } from 'node:child_process'
 import { mergedEnv } from './sessionEnv.mjs'
+import { currentSurface, ZED } from './editorSurface.mjs'
 import { cleanStaleDisplay, resolveXvncBin, waitForFile } from './zedStack.mjs'
 
 const env = mergedEnv()
-// Inverted opt-IN gate (contrast start-editor.mjs's OYREN_EDITOR=0 kill switch): exit 0 +
-// Restart=on-failure in the unit = a non-zed session stays down cleanly, no respawn loop.
-if (env.OYREN_ZED !== '1') {
-  console.log('OYREN_ZED!=1 — zed stream disabled for this session')
+// Gate on the RESOLVED surface, not on OYREN_ZED alone: a mid-session switch (control action
+// editor/switch) writes /etc/oyren/editor-surface and then starts this unit, so a session launched
+// as vscode must be able to become a Zed one. Exit 0 + Restart=on-failure in the unit = a session
+// that is not showing Zed stays down cleanly, no respawn loop.
+const surface = currentSurface(env)
+if (surface !== ZED) {
+  console.log(`editor surface is "${surface}" — zed stream disabled for this session`)
   process.exit(0)
 }
 // Fail closed, same reasoning as start-editor.mjs: the router's session token is the ONLY gate on

@@ -1,63 +1,24 @@
 #!/usr/bin/env bash
-# Derive the ZED snapshot from an existing BASE snapshot.
+# RETIRED — the base snapshot carries the Zed stack.
 #
-# Streamed Zed (KasmVNC + openbox + lavapipe + a pinned Zed build, deploy/zed/) costs ~1.5GB that
-# only zed-web sessions use, so it is NEVER baked into the base — the base's disk floor matters for
-# every other launch. Instead: boot one droplet from the finished base snapshot, run
-# deploy/zed/install-zed.sh, and snapshot it again. The two images then differ by exactly that dir.
+# Streamed Zed used to be a derived image because a session's editor was fixed at launch. It is not
+# any more: a session switches between the browser editor and streamed Zed while it runs
+# (sandbox-runtime/src/editorSurface.js), so both must exist in whatever image it booted from, and
+# deploy/bake-install.sh installs the stack as part of the BASE bake.
 #
-# Usage:
-#   DO_API_TOKEN=... DO_SSH_KEY_ID=... BASE_SNAPSHOT_ID=... ./derive-zed-snapshot.sh
+# This shim stays only so the `Bake snapshots` workflow keeps working while it still offers a
+# derive_zed step: it echoes the base id as the zed id — they are the same image now — in the
+# format the workflow greps, and exits. Delete both once that workflow drops the step.
+#
+# DROPLET_SNAPSHOT_ID_ZED can now be unset in the orchestrator (it falls back to the base id) or
+# pointed at the base id, which is the same image. The derive that used to live here is in git
+# history: `git log --follow -- deploy/bake/derive-zed-snapshot.sh`.
 set -euo pipefail
-cd "$(dirname "$0")"
-source ./lib.sh
 
-: "${BASE_SNAPSHOT_ID:?must be set — the image id printed by the base bake}"
+BASE_SNAPSHOT_ID="${BASE_SNAPSHOT_ID:-}"
+[ -n "$BASE_SNAPSHOT_ID" ] \
+  || { echo "ERROR: BASE_SNAPSHOT_ID is required (the base already contains the Zed stack)" >&2; exit 1; }
 
-NAME="oyren-derive-zed-$(date +%s)"
-# Mirrors bake-base-snapshot.sh: variant in the name, UTC HHMM so same-day runs don't collide.
-SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-zed-$(date -u +%Y-%m-%d-%H%M)}"
-
-# DISK SIZE IS THE CONSTRAINT, NOT CPU. DigitalOcean refuses to boot an image onto a droplet whose
-# disk is smaller than the one the image was made on, so the size used HERE sets the minimum size of
-# every future zed session droplet. Zed sessions ARE xl/xxl-gated — but at RUNTIME, by the
-# orchestrator (software rendering saturates small tiers); the gate belongs there, not to the image.
-# Baking on a roomier size would permanently raise this image's droplet floor for no benefit, so the
-# 25GB s-1vcpu-1gb family stays (in fra1 it is the ONLY 25GB-disk family — see derive-lean's note on
-# per-region size availability before changing this).
-#
-# 1GB RAM is workable because nothing here compiles: apt + two tarball unpacks, all I/O-bound, with
-# the base image's 4GB swapfile behind them. The ~1.5GB stack fits the base's ~13.5GB headroom.
-SIZE="${DERIVE_SIZE:-s-1vcpu-1gb}"
-
-echo "▶ booting $NAME from base snapshot $BASE_SNAPSHOT_ID ($SIZE)"
-DROPLET_ID="$(create_droplet "$NAME" "$SIZE" "$BASE_SNAPSHOT_ID" "$DO_SSH_KEY_ID" "$DO_REGION")"
-trap 'echo "▶ deleting derive droplet $DROPLET_ID"; delete_droplet "$DROPLET_ID"' EXIT
-
-wait_droplet_active "$DROPLET_ID"
-IP="$(droplet_public_ip "$DROPLET_ID")"
-wait_ssh "$IP"
-echo "▶ droplet $DROPLET_ID active at $IP"
-
-# The base snapshot already carries deploy/, but push the current checkout so a derive picks up
-# local edits to the zed assets without re-baking the base first.
-echo "▶ syncing zed assets"
-ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'mkdir -p /srv/composer/app/deploy/zed'
-rsync -az --delete ../zed/ "root@$IP:/srv/composer/app/deploy/zed/"
-
-echo "▶ installing KasmVNC + openbox + lavapipe + Zed (a few minutes)"
-ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'bash /srv/composer/app/deploy/zed/install-zed.sh'
-
-# Same reason as the base bake: without this, droplets from the snapshot think cloud-init already
-# ran and skip their own user_data — the part that writes /etc/oyren/sandbox.env and starts the
-# session. Must be last.
-echo "▶ resetting cloud-init"
-ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'cloud-init clean --logs'
-
-echo "▶ snapshotting as $SNAPSHOT_NAME"
-IMAGE_ID="$(snapshot_droplet "$DROPLET_ID" "$SNAPSHOT_NAME")"
-
-echo "✅ zed snapshot ready: $SNAPSHOT_NAME (image id: $IMAGE_ID)"
-echo "   Set DROPLET_SNAPSHOT_ID_ZED=$IMAGE_ID in the orchestrator."
-echo "   Verify on an xl zed-web session before shipping: stream up at /_oyren/zed/<token>/,"
-echo "   type+scroll, measure idle/typing CPU, close browser → zed-editor+Xvnc pids unchanged."
+echo "▶ zed derive is RETIRED — the base bake installs the Zed stack (deploy/bake-install.sh)"
+echo "  nothing to derive; unset DROPLET_SNAPSHOT_ID_ZED or point it at the base."
+echo "✅ zed snapshot = base snapshot (image id: $BASE_SNAPSHOT_ID)"

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Add streamed Zed (KasmVNC + openbox + Zed) to a sandbox droplet, producing the ZED snapshot
-# variant — run remotely by deploy/bake/derive-zed-snapshot.sh, mirroring deploy/lean/install-lean.sh.
+# Add streamed Zed (KasmVNC + openbox + Zed) to a sandbox droplet. Part of the BASE bake now
+# (deploy/bake-install.sh), not a derived variant.
 #
-# This is NOT part of the base bake: the stack is ~1.5GB that only streamed-Zed sessions use, and
-# the base image's disk floor matters for every other launch. Everything else (runtime, agents,
-# editor) is already in the base snapshot, which is why deriving is cheap.
+# It was a variant while a session's editor was fixed at launch. Now that a session can switch
+# between streamed Zed and the browser editor while it runs (editorSurface.js), both have to be in
+# whatever image it booted from. The stack is ~1.5GB inside the base's ~13.5GB headroom on the same
+# 25GB bake droplet, so the image's droplet floor does not move; deriving bought a smaller image at
+# the cost of a second thing to bake and a variant that lagged the base by a derive.
 #
-# Idempotent: safe to re-run. Runs as root on a droplet booted from the base snapshot.
+# Idempotent: safe to re-run. Runs as root during the bake.
 set -euo pipefail
 
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
