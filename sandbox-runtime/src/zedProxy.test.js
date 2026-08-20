@@ -37,7 +37,9 @@ test("the bare …/<token> form needs a slash redirect; trailing slash does not"
 })
 
 test("a percent-encoded token decodes; a malformed escape falls through raw", () => {
-  assert.equal(parseZedPath(`${ZED_PREFIX}/${encodeURIComponent("a b")}/x`).token, "a b")
+  const p = parseZedPath(`${ZED_PREFIX}/${encodeURIComponent("a b")}/x`)
+  assert.equal(p.token, "a b")
+  assert.equal(p.rawToken, "a%20b") // undecoded, for rebuilding redirect URLs verbatim
   assert.equal(parseZedPath(`${ZED_PREFIX}/%zz/x`).token, "%zz")
 })
 
@@ -83,13 +85,37 @@ test("bare …/<token> 302s to the trailing-slash form, preserving the query", a
   })
 })
 
+test("a bare page load 302s to inject the client's ?path= websocket setting", async () => {
+  await withFront({ sessionToken: T }, async (port) => {
+    const r = await request(port, `${ZED_PREFIX}/${T}/`)
+    assert.equal(r.status, 302)
+    const wsPath = encodeURIComponent(`_oyren/zed/${T}/websockify`)
+    assert.equal(r.headers.location, `${ZED_PREFIX}/${T}/?path=${wsPath}`)
+  })
+})
+
+test("a page load that already carries a query proxies through untouched", async () => {
+  const upstream = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" })
+    res.end(`GET ${req.url}`)
+  })
+  await listen(upstream)
+  await withFront({ sessionToken: T, zedPort: upstream.address().port }, async (port) => {
+    const r = await request(port, `${ZED_PREFIX}/${T}/?path=x`)
+    assert.equal(r.status, 200)
+    assert.equal(r.body, "GET /?path=x")
+  })
+  upstream.close()
+})
+
 test("nothing listening on the zed port answers 503 (stack booting / non-zed session)", async () => {
   const dead = http.createServer(() => {})
   await listen(dead)
   const zedPort = dead.address().port
   await new Promise((r) => dead.close(r)) // freed — now guaranteed nothing listens there
   await withFront({ sessionToken: T, zedPort }, async (port) => {
-    const r = await request(port, `${ZED_PREFIX}/${T}/`)
+    // The ?path= form (what a bare load redirects to) — a bare "/" would 302 before proxying.
+    const r = await request(port, `${ZED_PREFIX}/${T}/?path=x`)
     assert.equal(r.status, 503)
     assert.match(r.body, /zed stream/)
   })
