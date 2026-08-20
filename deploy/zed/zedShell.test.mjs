@@ -84,10 +84,11 @@ function writeConfig(box, contents) {
 
 // ---------------------------------------------------------------- mode resolution
 
-test("no config and no launch default ⇒ a plain login shell", () => {
+test("no config and no launch default ⇒ tmux (the built-in default)", () => {
   const box = sandbox()
   const { log } = runShell(box)
-  assert.deepEqual(log, ["login-shell -l"])
+  assert.ok(log.some((l) => l.startsWith("tmux -u new-session -d -s zed-1")), log.join("\n"))
+  assert.ok(!log.some((l) => l.startsWith("login-shell")), log.join("\n"))
 })
 
 test("OYREN_ZED_TERMINAL=tmux (the launch default) ⇒ tmux", () => {
@@ -219,7 +220,7 @@ test("zed-term default drops the choice and follows the launch default again", (
 
 test("zed-term status names where the mode came from", () => {
   const box = sandbox()
-  assert.match(runTerm(box, []).stdout, /built-in default/)
+  assert.match(runTerm(box, []).stdout, /tmux {3}\(built-in default/)
   assert.match(runTerm(box, [], { OYREN_ZED_TERMINAL: "tmux" }).stdout, /launch default/)
   runTerm(box, ["plain"])
   assert.match(runTerm(box, [], { OYREN_ZED_TERMINAL: "tmux" }).stdout, /zed-terminal/)

@@ -2,8 +2,8 @@
 # zed-term — read or change what Zed's terminal panel opens (see zed-shell for the resolution).
 #
 #   zed-term            print the current mode and where it came from
-#   zed-term tmux       persistent tmux session per terminal tab (survives closing the tab)
-#   zed-term plain      plain login shell, no multiplexer
+#   zed-term tmux       persistent tmux session per terminal tab (survives closing the tab) — DEFAULT
+#   zed-term plain      plain login shell, no multiplexer — how you quit tmux mode for good
 #   zed-term default    forget the local choice and follow the launch default again
 #
 # Takes effect for the NEXT terminal tab opened in Zed; tabs already open are untouched. Writing a
@@ -12,7 +12,7 @@ set -u
 
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/oyren/zed-terminal"
 
-launch_default() { [ -n "${OYREN_ZED_TERMINAL:-}" ] && echo "$OYREN_ZED_TERMINAL" || echo plain; }
+launch_default() { [ -n "${OYREN_ZED_TERMINAL:-}" ] && echo "$OYREN_ZED_TERMINAL" || echo tmux; }
 
 case "${1:-}" in
   tmux | plain)
@@ -30,7 +30,7 @@ case "${1:-}" in
     elif [ -n "${OYREN_ZED_TERMINAL:-}" ]; then
       echo "mode: $OYREN_ZED_TERMINAL   (launch default, from \$OYREN_ZED_TERMINAL)"
     else
-      echo "mode: plain   (built-in default; no local choice, no launch default)"
+      echo "mode: tmux   (built-in default; no local choice, no launch default)"
     fi
     ;;
   *)

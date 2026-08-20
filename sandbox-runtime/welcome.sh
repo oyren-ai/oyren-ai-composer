@@ -22,17 +22,20 @@ repo="${REPO_FULL_NAME:-—}"
 # Print one assistant line only if its CLI is on PATH (i.e. installed in this image).
 print_assistant() {
   command -v "$1" >/dev/null 2>&1 || return 0
-  printf '    %s%-9s%s %s\n' "$GR" "$1" "$X" "$2"
+  printf '    %s%-12s%s %s\n' "$GR" "$1" "$X" "$2"
 }
 assistants="$(
-  print_assistant claude   "Claude Code (Anthropic)"
-  print_assistant opencode "opencode — open-source, multi-model"
-  print_assistant qwen     "Qwen Code (Alibaba)"
-  print_assistant gemini   "Gemini CLI (Google)"
-  print_assistant codex    "Codex CLI (OpenAI)"
+  print_assistant claude       "Claude Code (Anthropic)"
+  print_assistant opencode     "opencode — open-source, multi-model"
+  print_assistant qwen         "Qwen Code (Alibaba)"
+  print_assistant gemini       "Gemini CLI (Google)"
+  print_assistant codex        "Codex CLI (OpenAI)"
+  # cursor-agent, not the `agent` alias it also installs: `agent` is too generic to print as an
+  # instruction here, and both symlinks point at the same binary (see install-agents.sh).
+  print_assistant cursor-agent "Cursor CLI (Cursor)"
   # dsh is the one agent you do not simply type: it serves a browser UI rather than a TUI, and
   # oyren-dsh-web is what starts it AND puts it on this session's public URL (see dsh-web.sh).
-  print_assistant dsh      "DeepSeek Harness — run \`oyren-dsh-web\` for its browser UI"
+  print_assistant dsh          "DeepSeek Harness — run \`oyren-dsh-web\` for its browser UI"
 )"
 
 cat <<EOF
@@ -58,7 +61,9 @@ cat <<EOF
     ${YL}oyren restart${X}        restart it   ${YL}oyren status${X}  check it
 
   ${D}Your app must bind 0.0.0.0:\$PORT (or the port you expose).
-  tmux keeps your work running if you disconnect — just reconnect.
+  This terminal runs inside tmux, so your work keeps running if you disconnect —
+  just reconnect. To leave tmux: ${X}${GR}Ctrl-b${X} ${D}then${X} ${GR}d${X}${D} detaches (the session keeps
+  running). In Zed's terminal panel,${X} ${GR}zed-term plain${X}${D} makes new tabs plain shells.
   Show this again with${X} ${GR}oyren-help${X}${D}.${X}
 
 EOF
