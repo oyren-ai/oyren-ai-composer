@@ -9,6 +9,7 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APT="apt-get -o DPkg::Lock::Timeout=300"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 KASMVNC_VERSION="${KASMVNC_VERSION:-1.5.0}"
 ZED_VERSION="${ZED_VERSION:-1.15.0}"
@@ -38,6 +39,15 @@ command -v Xkasmvnc >/dev/null || command -v Xvnc >/dev/null \
   || { echo "ERROR: KasmVNC web client dir /usr/share/kasmvnc/www missing — deb layout changed:" >&2; dpkg -L kasmvncserver | grep -i www >&2; exit 1; }
 command -v dbus-run-session >/dev/null \
   || { echo "ERROR: dbus-run-session missing (noble's dbus packaging split moved?)" >&2; exit 1; }
+
+# The web client refuses to re-send a clipboard whose bytes it already sent ("No clipboard changes"),
+# a cache that goes stale the moment anything else writes the session's X selection — after which
+# the SAME image can never be pasted again without copying something else first. Neuter that guard;
+# the script exits non-zero if the upstream shape moved, so a bake can't ship the bug back.
+echo "==> patching the KasmVNC web client's clipboard dedupe"
+command -v node >/dev/null \
+  || { echo "ERROR: node missing — the base snapshot always has it; nothing can patch the web client" >&2; exit 1; }
+node "$HERE/kasmClipboardPatch.mjs" /usr/share/kasmvnc/www
 
 echo "==> Zed ${ZED_VERSION} -> /opt/zed"
 TMP="$(mktemp -d)"
