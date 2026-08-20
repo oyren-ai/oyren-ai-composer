@@ -55,6 +55,11 @@ if [ "${SANDBOX_HOST:-1}" = "1" ]; then
   # instead of two ends the drift where a fix landed in the base and the zed variant lagged a
   # derive behind. Zed stays xl+ gated at RUNTIME by the orchestrator, where CPU is knowable.
   bash "$APP_DIR/deploy/zed/install-zed.sh"
+  # The in-VM browser rides the SAME KasmVNC/openbox stack the line above installs, and its Chrome
+  # is the one install-agents.sh already put under /ms-playwright — so it adds a launcher, a unit
+  # and a $BROWSER hook, and nothing else to the image. It exists because an agent CLI's OAuth
+  # callback is a LOOPBACK url: only a browser ON this machine can complete a codex/claude login.
+  bash "$APP_DIR/deploy/browser/install-browser.sh"
 fi
 
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"

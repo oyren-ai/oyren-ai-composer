@@ -1,90 +1,23 @@
 // Session-token-gated proxy to the streamed-Zed KasmVNC listener.
 //
-// URL CONTRACT:
-//   <session-origin>/_oyren/zed/<SESSION_TOKEN>/<rest>?<query>
-// proxies HTTP requests AND WebSocket upgrades to 127.0.0.1:6090 with the `/_oyren/zed/<token>`
-// prefix STRIPPED. KasmVNC has no --server-base-path equivalent, so unlike /_oyren/ide the prefix
-// must never reach it; its web client uses relative ASSET URLs, which is what makes the
-// stripped-prefix form workable (same contract as /_oyren/port, minus the port segment).
-//  - The client's WEBSOCKET is NOT relative: it builds `wss://<host>/<path-setting>` at the origin
-//    root (default path "websockify"), which lands outside the prefix and dies on the app fallback.
-//    The page URL must carry `?path=_oyren/zed/<token>/websockify` (the client reads query params
-//    over defaults); a bare page load without a query 302s to that form so a directly-opened
-//    stream URL works without the embedding frontend knowing the client's query API.
-//  - Token at path segment 3, validated exactly like /_oyren/ide/<token> (constant-time compare,
-//    fails closed 401 when SESSION_TOKEN is unset or mismatched). The KasmVNC listener itself runs
-//    with no auth on loopback — this token is its ONLY gate, mirroring the editor's 3131.
-//  - GET …/zed/<token> with no rest and no trailing slash → 302 to …/<token>/ (query preserved).
-//  - Nothing listening on 6090 (non-zed session, or the stack still booting) → 503.
-const { proxyHttp } = require("./proxyHttp")
-const { proxyWs } = require("./proxyWs")
-const { tokenEq } = require("./sessionAuth")
+//   <session-origin>/_oyren/zed/<SESSION_TOKEN>/<rest>?<query>  →  127.0.0.1:6090
+//
+// The contract (prefix stripping, the ?path= websocket injection, the token gate, the 503 while
+// the stack boots) now lives in vncProxy.js, because /_oyren/browser needs exactly the same thing
+// against a different port. This file is the Zed INSTANCE of it, and keeps the names the router,
+// upgrade handler and tests already import.
+const { createVncProxy } = require("./vncProxy")
 
 const ZED_PREFIX = "/_oyren/zed"
 // The oyren-zed unit's KasmVNC websocket listener (composer deploy/zed/start-zed.mjs).
 const ZED_PORT = Number(process.env.OYREN_ZED_PORT || 6090)
 
-// The token is a path segment, so it can arrive percent-encoded. A malformed escape can't match
-// anything anyway, so it falls through to the raw string and fails the constant-time compare.
-const decode = (s) => { try { return decodeURIComponent(s) } catch { return s } }
+const zed = createVncProxy({ prefix: ZED_PREFIX, port: ZED_PORT, starting: "zed stream starting…" })
 
-/**
- * Parse `/_oyren/zed/<token>/<rest>?<query>`. Returns null when rawUrl is not under ZED_PREFIX.
- * Otherwise: token ("" when missing — auth rejects it), downstream ("/<rest>" + query, the proxied
- * path once the 2-segment prefix is stripped), needsSlash (bare `…/<token>` form → caller 302s so
- * the client's relative asset URLs resolve under the prefix).
- */
-function parseZedPath(rawUrl) {
-  const raw = String(rawUrl || "/")
-  const qi = raw.indexOf("?")
-  const path = qi === -1 ? raw : raw.slice(0, qi)
-  const query = qi === -1 ? "" : raw.slice(qi)
-  if (path !== ZED_PREFIX && !path.startsWith(ZED_PREFIX + "/")) return null
-  const segs = path.split("/") // ["", "_oyren", "zed", "<token>", ...rest]
-  const rawToken = segs[3] || "" // as received (still percent-encoded) — for building redirects
-  const token = decode(rawToken)
-  const needsSlash = segs.length === 4 // exactly "…/zed/<token>" — no rest, no trailing slash
-  const downstream = "/" + segs.slice(4).join("/") + query
-  return { token, rawToken, downstream, needsSlash }
-}
-
-/** HTTP side. `zedPort` is injectable for tests; the router passes nothing and gets ZED_PORT. */
-function handleZedProxy(req, res, { sessionToken, zedPort = ZED_PORT }) {
-  const p = parseZedPath(req.url)
-  if (!p || !tokenEq(p.token, sessionToken)) {
-    res.writeHead(401, { "content-type": "text/plain" })
-    return res.end("unauthorized")
-  }
-  if (p.needsSlash && req.method === "GET") {
-    const qi = req.url.indexOf("?")
-    const [path, query] = qi === -1 ? [req.url, ""] : [req.url.slice(0, qi), req.url.slice(qi)]
-    res.writeHead(302, { location: path + "/" + query })
-    return res.end()
-  }
-  // Bare page load (no query at all) → 302 injecting the client's websocket path (header comment).
-  // The value is encodeURIComponent'd once because the client decodes it exactly once.
-  if (p.downstream === "/" && req.method === "GET") {
-    const wsPath = `${ZED_PREFIX.slice(1)}/${p.rawToken}/websockify`
-    res.writeHead(302, { location: `${ZED_PREFIX}/${p.rawToken}/?path=${encodeURIComponent(wsPath)}` })
-    return res.end()
-  }
-  req.url = p.downstream // proxyHttp forwards req.url as the upstream path
-  return proxyHttp(req, res, zedPort, () => {
-    res.writeHead(503, { "content-type": "text/plain" })
-    res.end("zed stream starting…")
-  })
-}
-
-/** WS side — the load-bearing one (KasmVNC is WebSocket-first). proxyWs replays req.url verbatim,
- *  so the prefix is stripped by mutating it first. No `res` on an upgrade socket → raw status line. */
-function handleZedProxyUpgrade(req, socket, head, { sessionToken, zedPort = ZED_PORT }) {
-  const p = parseZedPath(req.url)
-  if (!p || !tokenEq(p.token, sessionToken)) {
-    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
-    return socket.destroy()
-  }
-  req.url = p.downstream
-  return proxyWs(req, socket, head, zedPort)
-}
+const parseZedPath = (rawUrl) => zed.parsePath(rawUrl)
+const handleZedProxy = (req, res, { sessionToken, zedPort = ZED_PORT }) =>
+  zed.handle(req, res, { sessionToken, vncPort: zedPort })
+const handleZedProxyUpgrade = (req, socket, head, { sessionToken, zedPort = ZED_PORT }) =>
+  zed.handleUpgrade(req, socket, head, { sessionToken, vncPort: zedPort })
 
 module.exports = { ZED_PREFIX, ZED_PORT, parseZedPath, handleZedProxy, handleZedProxyUpgrade }

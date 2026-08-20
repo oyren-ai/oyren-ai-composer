@@ -1,0 +1,37 @@
+# The in-VM browser: KasmVNC's X server + openbox + Chrome, one supervised stack, streamed to the
+# user through the sandbox router (/_oyren/browser/<token>/ → 127.0.0.1:6091).
+#
+# ON-DEMAND, unlike oyren-zed.service: no [Install] section AND no Wants= from oyren-sandbox.service,
+# because a browser costs ~300MB resident and most sessions never need one. `oyren-open <url>` (the
+# $BROWSER hook every CLI consults) starts it, which means the first `codex login` or `claude auth
+# login` in a session brings it up exactly when it is needed.
+#
+# A viewer disconnect must never touch it — the launcher pins Xvnc's MaxDisconnectionTime /
+# MaxIdleTime / MaxConnectionTime to 0, so closing the tab mid-login only drops the WebSocket while
+# the half-finished sign-in stays on screen.
+[Unit]
+Description=Oyren in-VM browser (KasmVNC + openbox + Chrome)
+After=network-online.target
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+# host.env is baked (PATH, locale); sandbox.env is per-session from cloud-init and carries
+# CONTAINER_ENV_B64, which the launcher decodes (SESSION_TOKEN, OYREN_PUBLIC_ORIGIN).
+EnvironmentFile=/etc/oyren/host.env
+EnvironmentFile=/etc/oyren/sandbox.env
+ExecStart=/usr/bin/node /usr/local/lib/oyren/start-browser.mjs
+
+User=oyren
+WorkingDirectory=/workspace
+# A User= service has no logind session, so no /run/user/<uid>. Chrome needs an XDG_RUNTIME_DIR.
+RuntimeDirectory=oyren-browser
+RuntimeDirectoryMode=0700
+
+# mixed: `systemctl stop` SIGTERMs only the launcher, whose handler shuts the children down in order
+# and exits 0 — control-group would race the children's exit events against that handler.
+KillMode=mixed
+
+# on-failure, not always: a clean gate exit (no SESSION_TOKEN) must stay down; a dead Xvnc, openbox
+# or Chrome exits 1 and restarts the whole stack — a crashed browser mid-login should come back.
+Restart=on-failure
+RestartSec=3

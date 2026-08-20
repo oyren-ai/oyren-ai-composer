@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# oyren-open — open a URL in the browser that runs INSIDE this sandbox, starting it if needed, and
+# print the session URL where that browser can be watched.
+#
+# This is the value of $BROWSER for every shell and service in the sandbox (profile.d/25-oyren-
+# browser.sh), which is the variable `codex login`, `claude auth login`, `gh auth login`, xdg-open
+# and most CLIs consult before opening a link. Two consequences, and they are the point:
+#
+#   1. A loopback OAuth callback WORKS. The provider redirects to http://localhost:1455/auth/callback
+#      inside a browser on this machine, so the code reaches the CLI that asked for it. Neither codex
+#      nor claude lets that callback be pointed elsewhere, and no provider would accept a
+#      non-loopback redirect anyway (RFC 8252 §7.3) — so co-locating the browser is the fix.
+#   2. No localhost URL is ever handed to the user. `http://localhost:3000` typed at their laptop is
+#      their machine; the same URL in this browser is the droplet.
+#
+# Usage: oyren-open <url> [more urls…]   ·   `oyren-open` with no argument just starts the browser
+#        and prints where to watch it.
+set -u
+
+BROWSER_PORT="${OYREN_BROWSER_PORT:-6091}"
+PROFILE_DIR="${OYREN_BROWSER_PROFILE:-$HOME/.oyren-browser}"
+DISPLAY_NUM="${OYREN_BROWSER_DISPLAY:-:91}"
+
+# Where the user watches it: the router mounts the stream under this prefix, gated by SESSION_TOKEN
+# (browserProxy.js). Printed, never opened — this process has no way to reach the user's screen.
+stream_url() {
+  local origin="${OYREN_PUBLIC_ORIGIN:-${PUBLIC_URL:-${SANDBOX_HOSTNAME:-}}}"
+  [ -n "$origin" ] && [ -n "${SESSION_TOKEN:-}" ] || return 0
+  case "$origin" in http://*|https://*) ;; *) origin="https://$origin" ;; esac
+  origin="${origin%/}"
+  printf '%s/_oyren/browser/%s/' "$origin" "$SESSION_TOKEN"
+}
+
+running() { curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${BROWSER_PORT}/" 2>/dev/null; }
+
+start_browser() {
+  running && return 0
+  # systemd owns it when this is a real sandbox droplet; the unit is on-demand (no [Install]), so
+  # starting it here is the intended entry point rather than a fallback.
+  if command -v systemctl >/dev/null 2>&1 && systemctl start oyren-browser.service 2>/dev/null; then
+    for _ in $(seq 1 40); do running && return 0; sleep 0.5; done
+  fi
+  running || { echo "oyren-open: the browser stack did not come up (see: journalctl -u oyren-browser)" >&2; return 1; }
+}
+
+start_browser || exit 1
+
+url="$(stream_url)"
+if [ "$#" -eq 0 ]; then
+  [ -n "$url" ] && echo "Browser ready — watch it at: $url" || echo "Browser ready on 127.0.0.1:${BROWSER_PORT}"
+  exit 0
+fi
+
+# Re-running the same binary with the same --user-data-dir hands the URL to the ALREADY-RUNNING
+# Chrome (it opens a tab and exits) — which is why this needs no remote-debugging port and no IPC of
+# its own. The stack's own Chrome keeps being the one systemd supervises.
+chrome_bin() {
+  [ -n "${OYREN_BROWSER_BIN:-}" ] && [ -x "${OYREN_BROWSER_BIN}" ] && { printf '%s' "$OYREN_BROWSER_BIN"; return 0; }
+  local root="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" d p
+  for d in $(ls -1 "$root" 2>/dev/null | grep '^chromium-' | sort -t- -k2 -rn); do
+    for p in "$root/$d/chrome-linux64/chrome" "$root/$d/chrome-linux/chrome"; do
+      [ -x "$p" ] && { printf '%s' "$p"; return 0; }
+    done
+  done
+  return 1
+}
+
+BIN="$(chrome_bin)" || { echo "oyren-open: no Chrome found under ${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}" >&2; exit 127; }
+
+DISPLAY="$DISPLAY_NUM" "$BIN" --user-data-dir="$PROFILE_DIR" "$@" >/dev/null 2>&1 &
+[ -n "$url" ] && echo "Opened in the sandbox's browser — watch it at: $url"
+exit 0
