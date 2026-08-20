@@ -56,7 +56,13 @@ bg_start() {
   : > "$log"
   # A subshell, so a shell FUNCTION works as the command just as well as an external program, and
   # so the job cannot leak `cd`/variable changes back into the caller.
-  ( "$@" ) >"$log" 2>&1 &
+  #
+  # </dev/null IS LOAD-BEARING, not tidiness. provision-remote.sh is streamed into `bash -s` over
+  # SSH (lib.sh run_remote), which means the shell running this bake is READING ITS OWN SCRIPT FROM
+  # STDIN. A background job that inherited that stdin and read a single byte — a vendor installer
+  # prompting, `apt-get` asking a question, anything — would eat the rest of the bake script and the
+  # bake would die somewhere impossible to explain. Every job gets an empty stdin instead.
+  ( "$@" ) </dev/null >"$log" 2>&1 &
   _bg_names+=("$name")
   _bg_pids+=("$!")
   _bg_start_at+=("$(date +%s)")

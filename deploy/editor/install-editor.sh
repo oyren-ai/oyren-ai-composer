@@ -46,17 +46,34 @@ URL="${OPENVSCODE_DOWNLOAD_BASE}/openvscode-server-v${OPENVSCODE_VERSION}/${TARB
 
 EXTRAS_DEFAULT_URL="https://github.com/oyren-ai/openvscode-server/releases/download/editor-extras/oyren-editor-extras.tar.gz"
 EXTRAS_URL="${OYREN_EDITOR_EXTRAS_URL:-$EXTRAS_DEFAULT_URL}"
+
+# The two tarballs this script downloads, named for the bake's download cache. `--print-assets`
+# prints "<cache-name> <url>" for each and exits BEFORE any side effect (note it comes above the
+# mktemp below on purpose) — that is how deploy/bake/prefetch.sh learns to pull them during the
+# bake's idle apt wait without a second copy of the pin to drift from. The extras tarball is a
+# ROLLING release, so its cache name carries no version; the server tarball's already does.
+SERVER_ASSET="${TARBALL}.tar.gz"
+EXTRAS_ASSET="oyren-editor-extras.tar.gz"
+if [ "${1:-}" = "--print-assets" ]; then
+  printf '%s %s\n' "$SERVER_ASSET" "$URL" "$EXTRAS_ASSET" "$EXTRAS_URL"
+  exit 0
+fi
+
+# Use whatever the prefetcher already pulled down; download here when it did not (a standalone run,
+# or a failed prefetch). A missing extras tarball still fails the bake LOUDLY, as the header says.
+. "$HERE/../bake/prefetch.sh"
+
 EXTRAS_DIR="$(mktemp -d)"
 trap 'rm -rf "$EXTRAS_DIR"' EXIT
 
 echo "==> editor extras -> ${EXTRAS_DIR}"
-curl -fsSL --retry 3 "$EXTRAS_URL" | tar -xz -C "$EXTRAS_DIR"
+cached_untar "$EXTRAS_ASSET" "$EXTRAS_URL" "$EXTRAS_DIR"
 [ -d "$EXTRAS_DIR/extensions" ] && [ -f "$EXTRAS_DIR/settings/product.overrides.json" ] \
   || { echo "ERROR: extras tarball malformed — publish with oyren/scripts/pack-editor-extras.sh" >&2; exit 1; }
 
 echo "==> openvscode-server v${OPENVSCODE_VERSION} -> ${INSTALL_DIR}"
 rm -rf "$INSTALL_DIR" "/opt/${TARBALL}"
-curl -fsSL "$URL" | tar -xz -C /opt
+cached_untar "$SERVER_ASSET" "$URL" /opt
 mv "/opt/${TARBALL}" "$INSTALL_DIR"
 
 # product.json carries the branding. The merge script + overrides come from the extras tarball so

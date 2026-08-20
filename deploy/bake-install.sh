@@ -62,6 +62,14 @@ if [ "${SANDBOX_HOST:-1}" = "1" ]; then
   bash "$APP_DIR/deploy/browser/install-browser.sh"
 fi
 
+# Bake-only scratch, deleted here rather than by whichever script created it: the download cache
+# holds ~400MB of tarballs and debs that are already unpacked into the image, and the job logs are
+# a record of THIS bake, not something a session droplet should boot with. This is also where
+# install-agents.sh's apt-list wipe now lives — doing it mid-bake made install-zed-stack.sh
+# re-download every package index from scratch (~20s, measured) for nothing.
+echo "==> bake scratch cleanup"
+rm -rf /var/cache/oyren-bake /var/log/oyren-bake /var/lib/apt/lists/*
+
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"
 cp "$APP_DIR"/deploy/units/oyren-sandbox.service \
    "$APP_DIR"/deploy/units/oyren-build.service \

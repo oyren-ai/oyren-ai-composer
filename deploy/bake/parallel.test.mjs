@@ -126,3 +126,16 @@ test("waiting on a job that was never started is an error, not a silent success"
   assert.match(r.stdout, /rc=2/)
   assert.match(r.stderr, /no background job named 'ghost'/)
 })
+
+test("a job cannot read the caller's stdin — the bake script itself is streamed on it", () => {
+  // provision-remote.sh runs as `bash -s` over SSH, so the shell's stdin IS the rest of the bake
+  // script. A job that inherited and read it would swallow the bake. Jobs must see EOF instead.
+  const script = `set -euo pipefail\n. '${SCRIPT}'\nbg_start reader bash -c 'cat > /dev/null; echo "read-bytes=$?"'\nbg_wait reader\n`
+  const r = spawnSync("bash", ["-c", script], {
+    encoding: "utf8",
+    input: "SECRET-REST-OF-THE-BAKE-SCRIPT\n",
+    env: { PATH: process.env.PATH, BAKE_JOB_LOG_DIR: mkdtempSync(join(tmpdir(), "bake-jobs-")) },
+  })
+  assert.equal(r.status, 0)
+  assert.doesNotMatch(r.stdout, /SECRET-REST-OF-THE-BAKE-SCRIPT/)
+})

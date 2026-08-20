@@ -16,6 +16,26 @@ ZED_VERSION="${ZED_VERSION:-1.15.0}"
 KASMVNC_DEB_URL="${KASMVNC_DEB_URL:-https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/kasmvncserver_noble_${KASMVNC_VERSION}_amd64.deb}"
 ZED_TARBALL_URL="${ZED_TARBALL_URL:-https://github.com/zed-industries/zed/releases/download/v${ZED_VERSION}/zed-linux-x86_64.tar.gz}"
 
+# The two big downloads below, named for the bake's download cache. The version is IN the cache name
+# so a bumped pin can never be served a stale artifact.
+KASMVNC_DEB_ASSET="kasmvncserver_${KASMVNC_VERSION}_amd64.deb"
+ZED_TARBALL_ASSET="zed-linux-x86_64-${ZED_VERSION}.tar.gz"
+
+# `--print-assets` prints "<cache-name> <url>" for each of them and exits BEFORE any side effect.
+# That is how deploy/bake/prefetch.sh learns what to download during the bake's idle apt wait
+# without keeping a second copy of these pins to drift from. Keep this directly under the pins.
+if [ "${1:-}" = "--print-assets" ]; then
+  printf '%s %s\n' \
+    "$KASMVNC_DEB_ASSET" "$KASMVNC_DEB_URL" \
+    "$ZED_TARBALL_ASSET" "$ZED_TARBALL_URL"
+  exit 0
+fi
+
+# cached_curl/cached_untar: use whatever the prefetcher already pulled down, download it here when
+# it did not (a standalone run, or a prefetch that failed). Either way this script still fails
+# loudly if the bytes cannot be had.
+. "$HERE/../bake/prefetch.sh"
+
 # openbox: the WM. dbus: dbus-run-session for Zed's private bus. mesa-vulkan-drivers: lavapipe;
 # libvulkan1: the loader; vulkan-tools: bake-time proof lavapipe enumerates. libxkbcommon/asound:
 # Zed's dynamic-link deps a server image lacks. fontconfig+dejavu: fallback glyphs. xclip+xdotool:
@@ -32,7 +52,7 @@ $APT install -y -qq --no-install-recommends \
   xclip xdotool
 
 echo "==> KasmVNC ${KASMVNC_VERSION}"
-curl -fsSL -o /tmp/kasmvncserver.deb "$KASMVNC_DEB_URL"
+cached_curl "$KASMVNC_DEB_ASSET" "$KASMVNC_DEB_URL" /tmp/kasmvncserver.deb
 $APT install -y -qq /tmp/kasmvncserver.deb
 rm -f /tmp/kasmvncserver.deb
 # The deb has renamed its X server across releases; the launcher resolves the same pair at runtime.
@@ -55,7 +75,7 @@ node "$HERE/kasmClipboardPatch.mjs" /usr/share/kasmvnc/www
 echo "==> Zed ${ZED_VERSION} -> /opt/zed"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT # a failed download must not bake a half-extracted tree into the snapshot
-curl -fsSL "$ZED_TARBALL_URL" | tar -xz -C "$TMP"
+cached_untar "$ZED_TARBALL_ASSET" "$ZED_TARBALL_URL" "$TMP"
 # Exactly one top-level entry (expected zed.app/) — a changed tarball layout must fail, not
 # silently install whichever entry `ls` printed first.
 [ "$(ls -A "$TMP" | wc -l)" -eq 1 ] \
