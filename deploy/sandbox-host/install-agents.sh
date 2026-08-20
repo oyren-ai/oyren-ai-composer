@@ -37,35 +37,98 @@ export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # regardless of available memory. Raise the ceiling and let swap absorb anything past physical RAM.
 export NODE_OPTIONS="--max-old-space-size=3072${NODE_OPTIONS:+ $NODE_OPTIONS}"
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# bg_start/bg_wait. See deploy/bake/parallel.sh for why a bare `&` is not good enough: it does not
+# trip errexit, and a bare `wait` throws the exit status away.
+. "$HERE/../bake/parallel.sh"
+
+# ── vendor installers, overlapped with the pnpm pass below ────────────────────────────────────────
+# cursor's and antigravity's installers are self-contained vendor scripts that download a tarball and
+# unpack it into their own prefix; bun's wants unzip, which is apt. None of them touches anything
+# pnpm touches ($PNPM_HOME, /usr/lib/node_modules), and nothing else in this script uses apt until
+# the playwright block far below — which runs after this job has been collected. So the whole lot
+# (~32s measured, over a third of it dpkg re-running man-db triggers just to purge unzip again)
+# overlaps the pnpm pass instead of sitting on the critical path.
+#
+# DELIBERATELY NOT overlapped: the dsh npm install and the playwright install. Both are Node package
+# managers, and this droplet has 1GB of RAM behind a swapfile — two of those at once is how the very
+# first bake OOMed (see NODE_OPTIONS above). One JS package manager at a time, always. What runs
+# beside it here is curl, tar, dpkg and a Go installer binary, which together peak an order of
+# magnitude below that.
+install_vendors() {
+  echo "==> cursor (vendor installer — no pinned version available)"
+  su - "$SANDBOX_USER" -c 'curl https://cursor.com/install -fsS | bash'
+  ln -sf "/home/$SANDBOX_USER/.local/bin/agent" /usr/local/bin/agent
+  ln -sf "/home/$SANDBOX_USER/.local/bin/cursor-agent" /usr/local/bin/cursor-agent
+
+  echo "==> antigravity (+ bun ${BUN_VERSION}, its acp shim needs it)"
+  curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
+  # The installer ignores --dir and drops the binary in $HOME/.local/bin — which is /root here, a
+  # directory the sandbox user cannot read. In the container this was masked because the install ran
+  # as `oyren`; on the VM it runs as root, so AGY_BIN would point at a path the agent can't execute.
+  if [ ! -x /usr/local/bin/agy ]; then
+    AGY_SRC="$(command -v agy || true)"
+    [ -n "$AGY_SRC" ] || AGY_SRC=/root/.local/bin/agy
+    if [ -x "$AGY_SRC" ]; then
+      install -m 0755 "$AGY_SRC" /usr/local/bin/agy
+      echo "    relocated agy from $AGY_SRC"
+    else
+      echo "    WARNING: agy binary not found — antigravity launches will fail" >&2
+    fi
+  fi
+  apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends unzip
+  curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s -- "$BUN_VERSION"
+  apt-get -y -qq purge unzip && apt-get -y -qq autoremove
+}
+bg_start vendors install_vendors
+
+# ── every pnpm-installed agent CLI, in ONE pass ───────────────────────────────────────────────────
+# Not one `pnpm add -g` per package. Each call re-resolves and re-LINKS the entire global package
+# set, and on this 1-vCPU droplet that trailing link phase measured 12-29s EVERY TIME: the six calls
+# spent ~196s of a ~10-minute provisioning where one pass does the same downloads once and links
+# once. Same packages, same pinned versions, same resulting tree.
+#
+# --allow-build is per-PACKAGE-NAME, not per-command: pnpm 10 merges every --allow-build value into a
+# single onlyBuiltDependencies allowlist for the install (checked against pnpm 10.33.0's own option
+# handling, and confirmed by running this exact command — claude's native binary links and the
+# ignored-build list comes out identical to the six-call version). So the list below is EXACTLY the
+# six the individual calls allowed. antigravity-acp is installed WITHOUT one, deliberately: that is
+# what it has always had, and quietly starting to run its build script is not a change to smuggle
+# into a performance commit.
+#
 # HOME=/root keeps pnpm's store and logs out of the sandbox user's home, where they would otherwise
 # land root-owned and break the agent's first write.
-pg() { HOME=/root pnpm add -g --allow-build="$1" "$1@$2"; }
+echo "==> agent CLIs, one pnpm pass: claude ${CLAUDE_VERSION}, codex ${CODEX_VERSION} (+ acp ${CODEX_ACP_VERSION}), gemini ${GEMINI_VERSION}, opencode ${OPENCODE_VERSION}, qwen ${QWEN_VERSION}, antigravity-acp ${ANTIGRAVITY_ACP_VERSION}"
+HOME=/root pnpm add -g \
+  --allow-build=@anthropic-ai/claude-code \
+  --allow-build=@openai/codex \
+  --allow-build=@agentclientprotocol/codex-acp \
+  --allow-build=@google/gemini-cli \
+  --allow-build=opencode-ai \
+  --allow-build=@qwen-code/qwen-code \
+  "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+  "@openai/codex@${CODEX_VERSION}" \
+  "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+  "@google/gemini-cli@${GEMINI_VERSION}" \
+  "opencode-ai@${OPENCODE_VERSION}" \
+  "@qwen-code/qwen-code@${QWEN_VERSION}" \
+  "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
 
-echo "==> claude ${CLAUDE_VERSION}"
-pg @anthropic-ai/claude-code "$CLAUDE_VERSION"
 # `claude` is a 500-byte SHIM until the package's postinstall links the platform-native binary
 # (@anthropic-ai/claude-code-linux-x64) into bin/. Without --allow-build above pnpm skips that
 # script and the shim survives the bake, so every session gets a `claude` that only prints
 # "claude native binary not installed" — which is exactly how it reached a live sandbox once.
 # Run it, don't just look for the file: only executing proves the native binary is really there.
+# This is ALSO what proves the one-pass --allow-build list still does its job.
 CLAUDE_SMOKE="$(HOME=/root timeout 60 claude --version 2>&1 || true)"
 case "$CLAUDE_SMOKE" in
   *"$CLAUDE_VERSION"*) echo "    claude smoke: $CLAUDE_SMOKE" ;;
   *) echo "ERROR: claude does not run after install (native binary not linked?): $CLAUDE_SMOKE" >&2; exit 1 ;;
 esac
 
-echo "==> codex ${CODEX_VERSION} (+ acp ${CODEX_ACP_VERSION})"
-pg @openai/codex "$CODEX_VERSION"
-pg @agentclientprotocol/codex-acp "$CODEX_ACP_VERSION"
-
-echo "==> gemini ${GEMINI_VERSION}"
-pg @google/gemini-cli "$GEMINI_VERSION"
-
-echo "==> opencode ${OPENCODE_VERSION}"
-pg opencode-ai "$OPENCODE_VERSION"
-
-echo "==> qwen ${QWEN_VERSION}"
-pg @qwen-code/qwen-code "$QWEN_VERSION"
+# Collect the vendor installers before anything else starts: their output replays here in one block,
+# and a failure in any of them fails the bake right here with its own log directly above.
+bg_wait vendors
 
 # DeepSeek Harness. NPM, not pnpm, and the exception is load-bearing: dsh boots a Cordis plugin tree
 # whose loader resolves every bundle dependency (@deepseek-ai/dsh-settings-file,
@@ -88,31 +151,6 @@ case "$DSH_SMOKE" in
   *"$DSH_VERSION"*) echo "    dsh smoke: $DSH_SMOKE" ;;
   *) echo "ERROR: dsh does not run after install: $DSH_SMOKE" >&2; exit 1 ;;
 esac
-
-echo "==> cursor (vendor installer — no pinned version available)"
-su - "$SANDBOX_USER" -c 'curl https://cursor.com/install -fsS | bash'
-ln -sf "/home/$SANDBOX_USER/.local/bin/agent" /usr/local/bin/agent
-ln -sf "/home/$SANDBOX_USER/.local/bin/cursor-agent" /usr/local/bin/cursor-agent
-
-echo "==> antigravity (+ bun ${BUN_VERSION}, its acp shim needs it)"
-curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
-# The installer ignores --dir and drops the binary in $HOME/.local/bin — which is /root here, a
-# directory the sandbox user cannot read. In the container this was masked because the install ran
-# as `oyren`; on the VM it runs as root, so AGY_BIN would point at a path the agent can't execute.
-if [ ! -x /usr/local/bin/agy ]; then
-  AGY_SRC="$(command -v agy || true)"
-  [ -n "$AGY_SRC" ] || AGY_SRC=/root/.local/bin/agy
-  if [ -x "$AGY_SRC" ]; then
-    install -m 0755 "$AGY_SRC" /usr/local/bin/agy
-    echo "    relocated agy from $AGY_SRC"
-  else
-    echo "    WARNING: agy binary not found — antigravity launches will fail" >&2
-  fi
-fi
-apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends unzip
-curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s -- "$BUN_VERSION"
-apt-get -y -qq purge unzip && apt-get -y -qq autoremove
-HOME=/root pnpm add -g "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
 
 # Chromium for claude's playwright MCP. Shared, world-readable, outside any home dir so every agent
 # reuses one copy instead of downloading ~150MB on first use.
@@ -156,7 +194,10 @@ export IS_SANDBOX=1
 EOF
 chmod 0644 /etc/profile.d/20-oyren-agents.sh
 
-rm -rf /var/lib/apt/lists/* "/home/$SANDBOX_USER/.npm"
+# NOT /var/lib/apt/lists here any more: wiping it mid-bake forced install-zed-stack.sh to
+# re-download every package index from scratch (~20s, measured) a couple of minutes later.
+# bake-install.sh wipes it once, at the end, for the same image.
+rm -rf "/home/$SANDBOX_USER/.npm"
 install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "/home/$SANDBOX_USER/.cache"
 chown -R "$SANDBOX_USER:$SANDBOX_USER" "$PNPM_HOME"
 
