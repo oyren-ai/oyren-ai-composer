@@ -27,6 +27,13 @@ install -m 0755 "$HERE/start-zed.mjs" /usr/local/lib/oyren/start-zed.mjs
 install -m 0644 "$HERE/zedStack.mjs" /usr/local/lib/oyren/zedStack.mjs
 install -D -m 0644 "$HERE/rc.xml" /etc/oyren/zed/rc.xml
 
+# The terminal-panel shell + its switch. zed-shell decides tmux-vs-plain at spawn time from
+# $OYREN_ZED_TERMINAL (the launch default the orchestrator injects) or the user's own
+# `zed-term` choice, so neither needs a settings.json edit or a Zed restart.
+echo "==> zed-shell + zed-term -> /usr/local/bin"
+install -m 0755 "$HERE/zed-shell" /usr/local/bin/zed-shell
+install -m 0755 "$HERE/zed-term" /usr/local/bin/zed-term
+
 # Unit + the Wants= drop-in that hooks it into oyren-sandbox.service without a base re-bake.
 # NO systemctl enable — the unit has no [Install] section by design (see its header).
 echo "==> oyren-zed.service + oyren-sandbox drop-in"
@@ -37,13 +44,17 @@ systemctl daemon-reload
 # auto_update:false is load-bearing — Zed self-updates by default, which would silently drift the
 # pinned build on long-lived droplets. restore_on_startup:none — every session is a fresh droplet;
 # a restored stale project list would just confuse the stream.
+# terminal.shell.program — zed-shell, NOT a fixed shell or `tmux`: the tmux-vs-plain choice has to
+# be re-read per terminal tab (launch default + `zed-term`), and a program named here is spawned
+# fresh for every tab, which is exactly the hook for that.
 echo "==> seeding Zed settings for $SANDBOX_USER"
 install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "$USER_HOME/.config" "$USER_HOME/.config/zed"
 cat > "$USER_HOME/.config/zed/settings.json" <<'EOF'
 {
   "auto_update": false,
   "telemetry": { "diagnostics": false, "metrics": false },
-  "restore_on_startup": "none"
+  "restore_on_startup": "none",
+  "terminal": { "shell": { "program": "/usr/local/bin/zed-shell" } }
 }
 EOF
 chown "$SANDBOX_USER:$SANDBOX_USER" "$USER_HOME/.config/zed/settings.json"
