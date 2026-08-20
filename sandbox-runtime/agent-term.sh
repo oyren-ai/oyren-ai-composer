@@ -29,7 +29,7 @@ if [ -z "$KIND" ]; then
 fi
 
 case "$KIND" in
-  claude-code | qwen-code | gemini-cli | codex-cli | opencode | cursor-cli | antigravity-cli) ;;
+  claude-code | qwen-code | gemini-cli | codex-cli | opencode | cursor-cli | antigravity-cli | deepseek-harness) ;;
   *)
     echo "Unknown agent '$KIND'." >&2
     exit 64

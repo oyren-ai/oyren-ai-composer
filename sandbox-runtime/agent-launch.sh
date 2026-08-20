@@ -74,16 +74,22 @@ cd "$WORKDIR" 2>/dev/null || cd /workspace
 # the no-client 80-col default. Launching the agent now means its first paint (e.g. Claude Code's welcome
 # box) is locked to 80 cols and looks truncated once the real, wider terminal attaches. Wait (up to ~12s)
 # for a client to attach AND propagate its real width, so the agent draws at the true size from the start.
-for _ in $(seq 1 60); do
-  attached="$(tmux display-message -p '#{session_attached}' 2>/dev/null || echo 0)"
-  width="$(tmux display-message -p '#{window_width}' 2>/dev/null || echo 80)"
-  [ "$attached" != "0" ] && [ "${width:-80}" -gt 80 ] && break
-  sleep 0.2
-done
+# Skipped for the DeepSeek Harness: it paints no TUI (the pane runs a web server), so waiting on a
+# terminal width that never matters would just delay its UI by 12s on every session with no browser
+# terminal attached.
+if [ "${AGENT_KIND:-}" != "deepseek-harness" ]; then
+  for _ in $(seq 1 60); do
+    attached="$(tmux display-message -p '#{session_attached}' 2>/dev/null || echo 0)"
+    width="$(tmux display-message -p '#{window_width}' 2>/dev/null || echo 80)"
+    [ "$attached" != "0" ] && [ "${width:-80}" -gt 80 ] && break
+    sleep 0.2
+  done
+fi
 
 # Optional model override: the orchestrator injects AGENT_MODEL to pick which model the CLI runs
 # (a subscription alias like `sonnet`/`opus`, or a gateway model id for the ANTHROPIC_BASE_URL path).
-# Passed as `--model` — the flag every supported CLI accepts. Empty ⇒ each CLI's own default.
+# Passed as `--model` — the flag every supported CLI accepts (deepseek-harness is the exception; see
+# its case below). Empty ⇒ each CLI's own default.
 model_args=()
 [ -n "${AGENT_MODEL:-}" ] && model_args=(--model "$AGENT_MODEL")
 
@@ -108,6 +114,10 @@ else
       opencode)        opencode "${model_args[@]}" ;;
       cursor-cli)      agent "${model_args[@]}" ;;
       antigravity-cli) agy "${model_args[@]}" ;;
+      # DeepSeek Harness has no TUI: its interactive surface is a web app, so this pane runs the
+      # server (and its logs) while the user works in the browser at the session URL. No model_args —
+      # `dsh web` has no --model and would refuse to boot on the unknown flag; see dsh-web.sh.
+      deepseek-harness) oyren-dsh-web ;;
       *)               echo "Unknown agent '${AGENT_KIND:-}' — opening a shell."; break ;;
     esac
     echo "Agent exited. Restarting in 2 seconds... (Ctrl+C to stop)"
