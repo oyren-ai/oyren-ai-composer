@@ -18,15 +18,33 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-# First boot races us for the dpkg lock (cloud-init's own apt activity) — wait it out, then
-# give apt a lock timeout for any stragglers like unattended-upgrades.
-cloud-init status --wait >/dev/null 2>&1 || true
+# First boot races us for the dpkg lock (cloud-init's own apt activity, then unattended-upgrades) —
+# wait it out, then give apt a lock timeout for any stragglers.
+#
+# `cloud-init status --wait` alone is NOT enough: it returns while unattended-upgrades can still
+# hold the lock, and the lock that kills `apt-get update` is the LISTS lock, which
+# `-o DPkg::Lock::Timeout` does not wait on at all (that option covers the dpkg FRONTEND lock).
+# deploy/wait-for-apt.sh flocks all three and is what bake-install.sh and the zed stack install
+# already call — but this script is streamed over SSH by bake-base-snapshot.sh, so it can only
+# reach the copy in the checkout that same script rsyncs up moments earlier. Fall back to the bare
+# cloud-init wait if a caller ever runs this without pre-placing the checkout.
+wait_for_apt() {
+  if [ -f /srv/composer/app/deploy/wait-for-apt.sh ]; then
+    bash /srv/composer/app/deploy/wait-for-apt.sh
+  else
+    cloud-init status --wait >/dev/null 2>&1 || true
+  fi
+}
+wait_for_apt
 APT="apt-get -o DPkg::Lock::Timeout=300"
 
 # git first (needed for the composer clone below); then Docker CE via the official convenience
 # script — sandbox droplets run each session's image as a container, so the daemon is baked in.
 $APT update -qq
 $APT install -y -qq git
+# get.docker.com drives its own apt, so it needs its own wait: unattended-upgrades can wake up in
+# the gap between our install finishing and the script's first apt call.
+wait_for_apt
 curl -fsSL https://get.docker.com | sh
 
 # The "composer" supervisor. A pre-placed checkout (rsynced up by bake-snapshot.sh when
