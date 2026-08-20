@@ -10,7 +10,8 @@
 #   1. ~/.config/oyren/zed-terminal   what `zed-term` writes — an explicit in-container choice, so
 #                                     it outranks the launch default the session started with
 #   2. $OYREN_ZED_TERMINAL            the launch default (inherited from Zed's process env)
-#   3. plain                          what Zed did before this script existed
+#   3. tmux                           the built-in default: a closed tab is then a DETACH, not a
+#                                     lost agent run. `zed-term plain` opts out per container.
 #
 # An unrecognised value falls back to plain rather than failing: a typo in the config file or a
 # stale env var must never leave the terminal panel unable to open.
@@ -35,7 +36,7 @@ read_config() {
 
 mode="$(read_config || true)"
 [ -n "$mode" ] || mode="${OYREN_ZED_TERMINAL:-}"
-[ -n "$mode" ] || mode=plain
+[ -n "$mode" ] || mode=tmux
 
 exec_plain() { exec "${SHELL:-/bin/bash}" -l; }
 
