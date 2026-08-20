@@ -22,6 +22,9 @@ ZED_TARBALL_URL="${ZED_TARBALL_URL:-https://github.com/zed-industries/zed/releas
 # the image-paste bridge (zedClipboard.js) — xclip owns the X CLIPBOARD selection for a pasted image,
 # xdotool sends the synthetic Ctrl+V into focused Zed.
 echo "==> apt packages (openbox, dbus, lavapipe, X client libs, clipboard tools)"
+# THIS is the apt run that lost the 2026-08-20 03:28 bake to cloud-init's lock; wait it out first.
+# (Also covers a standalone run of install-zed.sh on a fresh droplet, not just the base bake.)
+bash "$HERE/../wait-for-apt.sh"
 $APT update -qq
 $APT install -y -qq --no-install-recommends \
   openbox dbus mesa-vulkan-drivers libvulkan1 vulkan-tools \

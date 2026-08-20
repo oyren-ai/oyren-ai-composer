@@ -14,6 +14,10 @@ APP_DIR="/srv/composer/app"
 GIT_URL="${COMPOSER_GIT_URL:-https://github.com/oyren-ai/oyren-ai-composer.git}"
 GIT_REF="${COMPOSER_GIT_REF:-main}"
 
+# A freshly booted droplet is still running cloud-init's own apt for a minute or two; starting
+# into that race kills the bake on its first apt call (see wait-for-apt.sh for the post-mortem).
+bash "$(dirname "${BASH_SOURCE[0]}")/wait-for-apt.sh"
+
 echo "==> Node 24 (NodeSource)"
 if ! command -v node >/dev/null 2>&1 || [ "$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))')" -lt 24 ]; then
   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
