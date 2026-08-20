@@ -29,6 +29,17 @@ rm -rf "$APP_DIR/node_modules"
 echo "==> Production dependencies (node-pty builds natively)"
 cd "$APP_DIR"
 pnpm install --prod --frozen-lockfile
+# node-pty is the web terminal. pnpm 10 only runs its build script because package.json lists it
+# under `pnpm.onlyBuiltDependencies` — and pnpm 11 NO LONGER READS THAT FIELD ("The \"pnpm\" field in
+# package.json is no longer read by pnpm ... onlyBuiltDependencies"), it moved to pnpm-workspace.yaml.
+# So the day PNPM_VERSION is bumped past 10, this install silently skips the gyp build and the
+# snapshot ships with a terminal that dies on `require("node-pty")`. Load it and fail the bake here
+# instead — a broken terminal is not something to discover from a user.
+node -e 'require("node-pty")' \
+  || { echo "ERROR: node-pty did not build — the web terminal would be dead in this image." >&2
+       echo "       pnpm $(pnpm --version) may be ignoring package.json's pnpm.onlyBuiltDependencies;" >&2
+       echo "       see install-host.sh PNPM_VERSION and pnpm's settings migration." >&2
+       exit 1; }
 
 echo "==> Helper commands on PATH"
 install -m 0755 "$APP_DIR/bin/oyren" /usr/local/bin/oyren
