@@ -137,13 +137,21 @@ HOME=/root node "$PW_CORE" install-deps chromium
 HOME=/root node "$PW_CORE" install --no-shell chromium
 chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
-# Agent-specific runtime env, applied to interactive shells and services alike.
+# Agent-specific runtime env for LOGIN SHELLS. That is the whole population this file reaches:
+# systemd units read /etc/oyren/host.env, and the runtime's headless `claude` is the in-process Agent
+# SDK, which never sources a profile at all.
+#
+# NOT set here, deliberately: CLAUDE_CODE_DISABLE_MOUSE / CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN. They
+# were added for "the sandbox drives claude headlessly over a pipe" — but the headless path never
+# read them (see above), so the only processes they ever reached were the INTERACTIVE TUIs: the
+# `claude` in the tmux pane and the one a user starts in a terminal. With mouse reporting off, Claude
+# Code never asks for mouse events, so tmux (mouse on, for the web terminal's scrollback) swallows
+# every drag into its own copy-mode — clicking to place the cursor and selecting text inside the TUI
+# both did nothing. Leaving them unset lets Claude request tracking and tmux forward it; a
+# browser-native selection is still available with shift-drag, as in any mouse-tracking TUI.
 cat > /etc/profile.d/20-oyren-agents.sh <<'EOF'
 export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 export AGY_BIN=/usr/local/bin/agy
-# Claude Code renders for a real TTY by default; the sandbox drives it headlessly over a pipe.
-export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
-export CLAUDE_CODE_DISABLE_MOUSE=1
 # The pinned claude is installed by root (this script IS the update channel — bump + re-bake), so
 # its self-updater cannot write its own prefix and every session footer shows
 # "Auto-update failed: no write permission to npm prefix · Run claude doctor".
