@@ -1,0 +1,30 @@
+name: List DO SSH keys
+
+# One-off helper: print the SSH keys registered in the DigitalOcean account behind
+# DIGITALOCEAN_ACCESS_TOKEN, so you can copy the id to use as DO_SSH_KEY_ID for the bake. Public
+# metadata only (id / name / fingerprint) — no private material. Safe to delete once you have the id.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List DigitalOcean SSH keys
+        env:
+          DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          [ -n "$DO_API_TOKEN" ] || { echo "::error::DIGITALOCEAN_ACCESS_TOKEN not available to this repo"; exit 1; }
+          resp="$(curl -fsS -H "Authorization: Bearer $DO_API_TOKEN" 'https://api.digitalocean.com/v2/account/keys?per_page=200')"
+          {
+            echo "## DigitalOcean SSH keys"
+            echo ""
+            echo "| id | name | fingerprint |"
+            echo "|---|---|---|"
+            echo "$resp" | jq -r '.ssh_keys[] | "| \(.id) | \(.name) | \(.fingerprint) |"'
+            echo ""
+            echo "Pick the key whose **private** half you have → its **id** is DO_SSH_KEY_ID, its private key is BAKE_SSH_PRIVATE_KEY."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
