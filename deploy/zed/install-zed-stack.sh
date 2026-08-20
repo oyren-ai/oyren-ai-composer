@@ -75,9 +75,13 @@ grep -qa ZED_ALLOW_EMULATED_GPU /opt/zed/libexec/zed-editor \
 # The launcher runs `zed --foreground` so the unit supervises the real editor process; a CLI that
 # dropped the flag would daemonize and read as an instant crash-loop. Captured into a var first:
 # under pipefail, grep -q closing the pipe early would SIGPIPE the CLI into a false bake failure.
-ZED_HELP="$(/opt/zed/bin/zed --help 2>&1 || true)"
+# ZED_ALLOW_ROOT is what makes the probe work AT BAKE TIME: 1.15 added a root guard that prints
+# "Running Zed as root or via sudo is unsupported." and exits 1 BEFORE clap ever renders --help, and
+# the bake runs as root — so without it this assert fires on a perfectly good CLI (it did, on
+# 2026-08-20). The guard is irrelevant at runtime: oyren-zed.service runs Zed as User=oyren.
+ZED_HELP="$(ZED_ALLOW_ROOT=true /opt/zed/bin/zed --help 2>&1 || true)"
 grep -q foreground <<<"$ZED_HELP" \
-  || { echo "ERROR: zed CLI ${ZED_VERSION} lost --foreground — start-zed.mjs depends on it" >&2; exit 1; }
+  || { echo "ERROR: zed CLI ${ZED_VERSION} lost --foreground — start-zed.mjs depends on it. Output was:" >&2; tail -n 20 <<<"$ZED_HELP" >&2; exit 1; }
 
 # lavapipe must actually enumerate as a Vulkan device — no display needed, the loader alone
 # answers. Without this, ZED_ALLOW_EMULATED_GPU has nothing to allow and the stream shows nothing.
