@@ -8,7 +8,10 @@ set -u
 # login shell's /etc/profile sources /etc/bash.bashrc (which fires this banner) *before* profile.d
 # re-adds PNPM_HOME — so prepend it here first, or `command -v` would miss the CLI. Matches Dockerfile
 # (ENV PATH) + agent-launch.sh.
-export PATH="/usr/local/share/pnpm:/app/node_modules/.bin:$PATH"
+# OYREN_AGENT_PATH exists so a test can pin down which CLIs the banner can see: with the real
+# directories baked in, "does it list X" would assert whatever the machine running the test happens
+# to have installed. Production never sets it.
+export PATH="${OYREN_AGENT_PATH:-/usr/local/share/pnpm:/app/node_modules/.bin}:$PATH"
 
 # Colors only when stdout is a TTY (avoids escape codes in logs/pipes).
 if [ -t 1 ]; then
