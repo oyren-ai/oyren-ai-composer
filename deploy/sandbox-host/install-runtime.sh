@@ -48,6 +48,10 @@ install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential
 # Backs the editor's terminal-profile dropdown: one profile per agent, plus "Agent", which attaches
 # to the very tmux session Oyren's own web terminal shows.
 install -m 0755 "$APP_DIR/agent-term.sh" /usr/local/bin/oyren-agent-term
+# The DeepSeek Harness launcher. Its own command rather than a case inside agent-launch.sh because
+# dsh is a web app, not a TUI: any session can serve it on demand (`oyren-dsh-web`), whether or not
+# it was launched with AGENT_KIND=deepseek-harness.
+install -m 0755 "$APP_DIR/dsh-web.sh" /usr/local/bin/oyren-dsh-web
 # The native Chat panel's claude replacement once claudeCode.claudeProcessWrapper points at it
 # (openvscode-server's oyren/settings/machine-settings.json) — installed under its OWN name so it
 # never shadows the pnpm-global `claude` shim it wraps. v2: a contract-faithful relay — flag off
@@ -71,7 +75,7 @@ install -m 0755 "$APP_DIR/oyren-editor-server-swap.sh" /usr/local/bin/oyren-edit
 install -m 0755 "$APP_DIR/gh-wrapper.sh" /usr/local/bin/gh
 ln -sf /usr/local/bin/oyren-welcome /usr/local/bin/oyren-help
 install -m 0644 "$APP_DIR/tmux.conf" /etc/tmux.conf
-chmod +x "$APP_DIR/entrypoint.sh" "$APP_DIR/agent-launch.sh" "$APP_DIR/agent-term.sh"
+chmod +x "$APP_DIR/entrypoint.sh" "$APP_DIR/agent-launch.sh" "$APP_DIR/agent-term.sh" "$APP_DIR/dsh-web.sh"
 
 echo "==> Session launchers + systemd units"
 # All three launchers share sessionEnv.mjs + editorSurface.mjs via RELATIVE imports (start-zed.mjs

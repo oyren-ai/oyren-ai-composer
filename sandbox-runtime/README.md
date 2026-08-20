@@ -43,7 +43,7 @@ oyren restart       # restart the managed app   ·   oyren status   # check it
 | `REPO_FULL_NAME` | `owner/repo` cloned into `/workspace/<repo>` on start; that folder becomes the default `WORKDIR`/`WORKING_DIR` (repo root for terminals, agents, manifest) |
 | `GITHUB_TOKEN` | short-lived token for cloning a private repo (stripped from the remote after) |
 | `OYREN_MODE` | `dev` or `prod` — picks the manifest's `dev` vs `start` command |
-| `AGENT_KIND` | CLI coding agent to auto-launch in tmux (`claude-code`, …); absent ⇒ plain shell |
+| `AGENT_KIND` | CLI coding agent to auto-launch in tmux (`claude-code`, …); absent ⇒ plain shell. `deepseek-harness` is the one kind that paints no TUI — its pane runs `oyren-dsh-web`, which serves dsh's browser UI at the session URL |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Claude subscription setup-token. `seedClaudeAuth` writes it to `~/.claude/.credentials.json` so **interactive** `claude` boots authenticated — interactive `claude` ignores this env var directly (it's headless/`-p` only), so the file is required, not optional |
 | `AGENT_CONTEXT_B64` | base64 launch context (chatbot character/instructions); `seedAgentContext` appends it under a marker block in the provider's context file at the repo root (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`/`QWEN.md`) |
 | `CODEX_AUTH_JSON_B64` | base64 Codex subscription credential; `seedAgentAuth` writes it to `~/.codex/auth.json` (0600) |
@@ -53,6 +53,9 @@ oyren restart       # restart the managed app   ·   oyren status   # check it
 | `GEMINI_OAUTH_CREDS_B64` | base64 Gemini subscription `oauth_creds.json` → `~/.gemini/oauth_creds.json` (auth type pinned to `oauth-personal`) |
 | `CURSOR_API_KEY` | Cursor API key — `agent` / `cursor-agent` reads it from the env directly (no file seeding). Unattended approval is seeded into `~/.cursor/cli-config.json` by `seedCursorSettings` |
 | `OPENCODE_MODEL` | opencode default model id (`openrouter/<model>`), written as `model` into `opencode.json` |
+| `DEEPSEEK_API_KEY` | DeepSeek Harness (`dsh`) key — read from the inherited environment by dsh itself, so nothing is seeded. Its Settings → Models page is the alternative, which stores the key in `$DSH_HOME/.credentials.yaml` |
+| `OYREN_DSH_PORT` | loopback port for the DeepSeek Harness web UI (default `3080`) |
+| `OYREN_DSH_ROUTE` | proxy prefix `oyren-dsh-web` registers for that UI (default `/`; `none` skips it). dsh serves root-absolute assets, so a stripped prefix breaks it — see `dsh-web.sh` |
 
 ## Develop & test
 

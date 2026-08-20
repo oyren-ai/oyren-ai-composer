@@ -30,6 +30,9 @@ assistants="$(
   print_assistant qwen     "Qwen Code (Alibaba)"
   print_assistant gemini   "Gemini CLI (Google)"
   print_assistant codex    "Codex CLI (OpenAI)"
+  # dsh is the one agent you do not simply type: it serves a browser UI rather than a TUI, and
+  # oyren-dsh-web is what starts it AND puts it on this session's public URL (see dsh-web.sh).
+  print_assistant dsh      "DeepSeek Harness — run \`oyren-dsh-web\` for its browser UI"
 )"
 
 cat <<EOF
