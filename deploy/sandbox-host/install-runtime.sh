@@ -43,6 +43,10 @@ node -e 'require("node-pty")' \
 
 echo "==> Helper commands on PATH"
 install -m 0755 "$APP_DIR/bin/oyren" /usr/local/bin/oyren
+# $BROWSER for every shell (deploy/browser/install-browser.sh writes the profile.d line that
+# points at it): opens a URL in the sandbox's own browser, which is the only browser whose
+# localhost is this machine — see bin/oyren-open.
+install -m 0755 "$APP_DIR/bin/oyren-open" /usr/local/bin/oyren-open
 install -m 0755 "$APP_DIR/welcome.sh" /usr/local/bin/oyren-welcome
 install -m 0755 "$APP_DIR/git-credential-oyren.sh" /usr/local/bin/git-credential-oyren
 # Backs the editor's terminal-profile dropdown: one profile per agent, plus "Agent", which attaches

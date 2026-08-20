@@ -9,6 +9,8 @@
 //  - /_oyren/runs.html→ browsable HTML view of those same runs, for a browser tab / iframe (SESSION_TOKEN).
 //  - /_oyren/gateway  → landing page with all configured routes + download/logs links.
 //  - /_oyren/port/*   → session-token-gated proxy to any loopback port (token in the path; portProxy.js).
+//  - /_oyren/browser/*→ the in-VM browser's KasmVNC stream (browserProxy.js) — the surface that makes
+//    an agent CLI's loopback OAuth callback reachable, because that browser IS on this machine.
 //  - /how-to-deploy   → static page (legacy, kept for compatibility).
 //  - everything else  → routerApp.js: Routes config → supervisor.exposedPort → gateway page.
 const { routeFor } = require("./routeFor")
@@ -26,6 +28,7 @@ const { handleGateway } = require("./gateway")
 const { handleAppRoute } = require("./routerApp")
 const { handlePortProxy } = require("./portProxy")
 const { handleZedProxy } = require("./zedProxy")
+const { handleBrowserProxy } = require("./browserProxy")
 const { handleZedClipboard } = require("./zedClipboard")
 const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR, PORT } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
@@ -90,6 +93,7 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
     // The streamed-Zed stream (Next's ZedStreamView iframe) — token-gated like the port proxy,
     // prefix-stripped onto the KasmVNC listener. See zedProxy.js.
     if (route.kind === "zed") return handleZedProxy(req, res, { sessionToken: SESSION_TOKEN })
+    if (route.kind === "browser") return handleBrowserProxy(req, res, { sessionToken: SESSION_TOKEN })
     // Image → clipboard for the streamed-Zed session: the Oyren UI POSTs a pasted image here and we
     // put it on Zed's X clipboard (+ optional auto Ctrl+V). Token-gated like the zed stream itself.
     if (route.kind === "zed-clipboard") return handleZedClipboard(req, res, { sessionToken: SESSION_TOKEN })

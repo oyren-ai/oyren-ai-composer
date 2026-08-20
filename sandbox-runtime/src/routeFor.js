@@ -31,6 +31,8 @@ function routeFor(rawUrl) {
   if (isUnder(path, "/_oyren/zed-clipboard")) return { kind: "zed-clipboard" }
   // The streamed-Zed (KasmVNC) stream — see zedProxy.js for the URL contract.
   if (isUnder(path, "/_oyren/zed")) return { kind: "zed" }
+  // The in-VM browser's stream, same contract against its own port — see browserProxy.js.
+  if (isUnder(path, "/_oyren/browser")) return { kind: "browser" }
   if (isUnder(path, "/agent/current")) return { kind: "agent-current" }
   if (isUnder(path, "/agent/stream")) return { kind: "agent-stream" }
   if (isUnder(path, "/agent/interrupt")) return { kind: "agent-interrupt" }
@@ -51,6 +53,8 @@ function wsRouteFor(rawUrl) {
   if (isUnder(path, "/_oyren/port")) return { kind: "port" }
   // The zed stream is WebSocket-first (KasmVNC) — its WS side matters more than its HTTP side.
   if (isUnder(path, "/_oyren/zed")) return { kind: "zed" }
+  // …and so is the browser stream.
+  if (isUnder(path, "/_oyren/browser")) return { kind: "browser" }
   return { kind: "app" }
 }
 

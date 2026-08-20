@@ -56,6 +56,10 @@ oyren restart       # restart the managed app   ·   oyren status   # check it
 | `DEEPSEEK_API_KEY` | DeepSeek Harness (`dsh`) key — read from the inherited environment by dsh itself, so nothing is seeded. Its Settings → Models page is the alternative, which stores the key in `$DSH_HOME/.credentials.yaml` |
 | `OYREN_DSH_PORT` | loopback port for the DeepSeek Harness web UI (default `3080`) |
 | `OYREN_DSH_ROUTE` | proxy prefix `oyren-dsh-web` registers for that UI (default `/`; `none` skips it). dsh serves root-absolute assets, so a stripped prefix breaks it — see `dsh-web.sh` |
+| `OYREN_BROWSER_PORT` | loopback KasmVNC port for the in-VM browser (default `6091`); the router serves it at `/_oyren/browser/<token>/`. That browser's `localhost` is the sandbox, which is what makes an agent CLI's loopback OAuth callback completable |
+| `OYREN_BROWSER_IDLE_MINUTES` | stop the browser after this long with no viewer (default `30`, `0` disables). Cheap to resume: its Chrome profile is on disk, so a completed login survives the stop |
+| `OYREN_BROWSER_START_URL` | page the browser opens with (default `about:blank`) |
+| `OYREN_BROWSER_PROFILE` | Chrome profile dir (default `$HOME/.oyren-browser`) |
 
 ## Develop & test
 
