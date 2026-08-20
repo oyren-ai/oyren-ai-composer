@@ -1,0 +1,45 @@
+name: Provision DO SSH key
+
+# One-off helper: register a PUBLIC SSH key in the DigitalOcean account behind
+# DIGITALOCEAN_ACCESS_TOKEN and print its id (→ DO_SSH_KEY_ID). Public key only; safe to delete after.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Name for the key in DigitalOcean"
+        type: string
+        default: "oyren-bake-ci"
+      public_key:
+        description: "The ssh-ed25519 ... public key line"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Register public key in DigitalOcean
+        env:
+          DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          KEYNAME: ${{ inputs.name }}
+          PUBKEY: ${{ inputs.public_key }}
+        run: |
+          [ -n "$DO_API_TOKEN" ] || { echo "::error::DIGITALOCEAN_ACCESS_TOKEN not available"; exit 1; }
+          body="$(jq -n --arg n "$KEYNAME" --arg k "$PUBKEY" '{name:$n, public_key:$k}')"
+          resp="$(curl -sS -X POST -H "Authorization: Bearer $DO_API_TOKEN" -H "Content-Type: application/json" \
+            -d "$body" https://api.digitalocean.com/v2/account/keys)"
+          id="$(echo "$resp" | jq -r '.ssh_key.id // empty')"
+          if [ -z "$id" ]; then
+            # Already-registered keys 422 with "SSH Key is already in use"; surface the message.
+            echo "::error::DO did not return an id: $(echo "$resp" | jq -c '.message // .')"
+            exit 1
+          fi
+          {
+            echo "## DO key registered"
+            echo "- **DO_SSH_KEY_ID = \`$id\`**"
+            echo "- fingerprint: $(echo "$resp" | jq -r '.ssh_key.fingerprint')"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "PROVISIONED_ID=$id"
