@@ -42,6 +42,16 @@ pg() { HOME=/root pnpm add -g --allow-build="$1" "$1@$2"; }
 
 echo "==> claude ${CLAUDE_VERSION}"
 pg @anthropic-ai/claude-code "$CLAUDE_VERSION"
+# `claude` is a 500-byte SHIM until the package's postinstall links the platform-native binary
+# (@anthropic-ai/claude-code-linux-x64) into bin/. Without --allow-build above pnpm skips that
+# script and the shim survives the bake, so every session gets a `claude` that only prints
+# "claude native binary not installed" — which is exactly how it reached a live sandbox once.
+# Run it, don't just look for the file: only executing proves the native binary is really there.
+CLAUDE_SMOKE="$(HOME=/root timeout 60 claude --version 2>&1 || true)"
+case "$CLAUDE_SMOKE" in
+  *"$CLAUDE_VERSION"*) echo "    claude smoke: $CLAUDE_SMOKE" ;;
+  *) echo "ERROR: claude does not run after install (native binary not linked?): $CLAUDE_SMOKE" >&2; exit 1 ;;
+esac
 
 echo "==> codex ${CODEX_VERSION} (+ acp ${CODEX_ACP_VERSION})"
 pg @openai/codex "$CODEX_VERSION"

@@ -1,0 +1,76 @@
+#!/bin/sh
+# zed-shell — the program Zed's terminal panel spawns (terminal.shell.program in settings.json).
+#
+# It picks tmux or a plain login shell AT SPAWN TIME, which is what makes the choice settable from
+# OUTSIDE Zed: the orchestrator injects a launch default (OYREN_ZED_TERMINAL, from the launch
+# request's `zedTerminal`) and `zed-term tmux|plain` overrides it in-container. Neither path edits
+# settings.json or restarts Zed — the next terminal tab you open picks up the current answer.
+#
+# Precedence, highest first:
+#   1. ~/.config/oyren/zed-terminal   what `zed-term` writes — an explicit in-container choice, so
+#                                     it outranks the launch default the session started with
+#   2. $OYREN_ZED_TERMINAL            the launch default (inherited from Zed's process env)
+#   3. plain                          what Zed did before this script existed
+#
+# An unrecognised value falls back to plain rather than failing: a typo in the config file or a
+# stale env var must never leave the terminal panel unable to open.
+#
+# MOUSE IS ALWAYS OFF in the tmux sessions opened here, whatever /etc/tmux.conf says. With `mouse
+# on` tmux captures drag events and Zed's own terminal selection stops working — you get neither
+# the editor's highlight nor a usable tmux one, and copy out of the pane becomes guesswork.
+# /etc/tmux.conf deliberately turns it ON for the WEB terminal (xterm.js has no scrollback there
+# without it), so this has to be set per session rather than left to the global default.
+set -u
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/oyren/zed-terminal"
+# Session-name prefix. One session per terminal tab: several clients attached to the SAME session
+# all render the same window, so a shared `new-session -A -s zed` would make every tab a mirror.
+PREFIX=zed
+
+# First non-blank, non-comment word of the config file (the file `zed-term` writes).
+read_config() {
+  [ -r "$CONFIG" ] || return 1
+  sed -e 's/#.*//' -e 's/[[:space:]]//g' "$CONFIG" | grep -m1 . || return 1
+}
+
+mode="$(read_config || true)"
+[ -n "$mode" ] || mode="${OYREN_ZED_TERMINAL:-}"
+[ -n "$mode" ] || mode=plain
+
+exec_plain() { exec "${SHELL:-/bin/bash}" -l; }
+
+case "$mode" in
+  tmux | multiplexer) ;;
+  *) exec_plain ;;
+esac
+
+# --- tmux mode ----------------------------------------------------------------------------------
+command -v tmux >/dev/null 2>&1 || {
+  echo "zed-shell: tmux not found — opening a plain shell instead" >&2
+  exec_plain
+}
+
+# Reclaim the first UNATTACHED zed-N session (a tab closed earlier whose work is still running)
+# before creating a new one; that is what makes closing a tab a detach rather than a loss.
+session="$(
+  tmux list-sessions -F '#{session_name} #{session_attached}' 2>/dev/null |
+    awk -v pat="^${PREFIX}-[0-9]+\$" '$2 == 0 && $1 ~ pat { print $1; exit }'
+)"
+
+if [ -z "$session" ]; then
+  n=1
+  while tmux has-session -t "${PREFIX}-${n}" 2>/dev/null; do
+    n=$((n + 1))
+  done
+  session="${PREFIX}-${n}"
+  # Detached first, so `mouse off` is applied BEFORE a client ever renders the pane — attaching
+  # and then setting it would leave the first frames in mouse-capture mode.
+  # `-u` forces UTF-8 so the agents' box-drawing glyphs survive (same reason as agent-term.sh).
+  tmux -u new-session -d -s "$session" -c "$PWD" || exec_plain
+fi
+
+# Every spawn, not just creation: a reclaimed session may predate this script, and the global
+# default in /etc/tmux.conf is `mouse on`.
+tmux set-option -t "$session" mouse off >/dev/null 2>&1
+
+exec tmux -u attach-session -t "$session"

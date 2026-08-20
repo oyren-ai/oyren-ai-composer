@@ -1,0 +1,40 @@
+#!/bin/sh
+# zed-term — read or change what Zed's terminal panel opens (see zed-shell for the resolution).
+#
+#   zed-term            print the current mode and where it came from
+#   zed-term tmux       persistent tmux session per terminal tab (survives closing the tab)
+#   zed-term plain      plain login shell, no multiplexer
+#   zed-term default    forget the local choice and follow the launch default again
+#
+# Takes effect for the NEXT terminal tab opened in Zed; tabs already open are untouched. Writing a
+# choice here OUTRANKS the launch default ($OYREN_ZED_TERMINAL) the session was started with.
+set -u
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/oyren/zed-terminal"
+
+launch_default() { [ -n "${OYREN_ZED_TERMINAL:-}" ] && echo "$OYREN_ZED_TERMINAL" || echo plain; }
+
+case "${1:-}" in
+  tmux | plain)
+    mkdir -p "$(dirname "$CONFIG")" || exit 1
+    printf '%s\n' "$1" >"$CONFIG" || exit 1
+    echo "zed terminal mode -> $1   (open a new terminal tab in Zed to apply)"
+    ;;
+  default)
+    rm -f "$CONFIG"
+    echo "zed terminal mode -> $(launch_default)   (launch default; open a new terminal tab to apply)"
+    ;;
+  "" | status | show)
+    if [ -r "$CONFIG" ] && mode="$(sed -e 's/#.*//' -e 's/[[:space:]]//g' "$CONFIG" | grep -m1 .)"; then
+      echo "mode: $mode   (from $CONFIG — run \`zed-term default\` to follow the launch default again)"
+    elif [ -n "${OYREN_ZED_TERMINAL:-}" ]; then
+      echo "mode: $OYREN_ZED_TERMINAL   (launch default, from \$OYREN_ZED_TERMINAL)"
+    else
+      echo "mode: plain   (built-in default; no local choice, no launch default)"
+    fi
+    ;;
+  *)
+    echo "usage: zed-term [tmux|plain|default|status]" >&2
+    exit 64
+    ;;
+esac
