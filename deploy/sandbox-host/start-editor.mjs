@@ -11,6 +11,7 @@
 // bare hit on the base path to ?folder=$WORKDIR (see sandbox-runtime/src/ide.js).
 import { spawn } from 'node:child_process'
 import { mergedEnv } from './sessionEnv.mjs'
+import { currentSurface, VSCODE } from './editorSurface.mjs'
 
 const BIN = process.env.OYREN_EDITOR_BIN ?? '/opt/openvscode-server/bin/openvscode-server'
 const PORT = process.env.OYREN_EDITOR_PORT ?? '3131'
@@ -26,10 +27,13 @@ const OYREN_PROPOSAL_EXTENSIONS = ['oyren.oyren-chat-probe', 'oyren.oyren-agent'
 
 const env = mergedEnv()
 
-// Kill switch. The smallest tiers are 1 vCPU / 1GB, shared with the agent; the editor is worth
-// dropping there rather than thrashing swap.
-if (env.OYREN_EDITOR === '0') {
-  console.log('OYREN_EDITOR=0 — editor disabled for this session')
+// Kill switch, now expressed as a surface (editorSurface.mjs): OYREN_EDITOR=0 still means "no
+// editor" on the smallest tiers (1 vCPU / 1GB, shared with the agent — the editor is worth dropping
+// there rather than thrashing swap), and a zed-web session resolves to "zed" for the same reason.
+// Either way this unit stands down; a later switch to vscode writes the surface file and starts it.
+const surface = currentSurface(env)
+if (surface !== VSCODE) {
+  console.log(`editor surface is "${surface}" — editor disabled for this session`)
   process.exit(0)
 }
 

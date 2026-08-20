@@ -63,11 +63,13 @@ install -m 0644 "$APP_DIR/tmux.conf" /etc/tmux.conf
 chmod +x "$APP_DIR/entrypoint.sh" "$APP_DIR/agent-launch.sh" "$APP_DIR/agent-term.sh"
 
 echo "==> Session launchers + systemd units"
-# Both launchers share sessionEnv.mjs via a RELATIVE import, so they must land in one directory —
+# All three launchers share sessionEnv.mjs + editorSurface.mjs via RELATIVE imports (start-zed.mjs
+# lands here too, from install-zed.sh), so they must land in one directory —
 # and they keep their .mjs extension, which is what tells node to load them as ES modules (an
 # extensionless /usr/local/bin/oyren-start-sandbox would be parsed as CommonJS and fail on `import`).
 install -d -m 0755 /usr/local/lib/oyren
 install -m 0644 "$HERE/sessionEnv.mjs" /usr/local/lib/oyren/sessionEnv.mjs
+install -m 0644 "$HERE/editorSurface.mjs" /usr/local/lib/oyren/editorSurface.mjs
 install -m 0755 "$HERE/start-sandbox.mjs" /usr/local/lib/oyren/start-sandbox.mjs
 install -m 0755 "$HERE/start-editor.mjs" /usr/local/lib/oyren/start-editor.mjs
 install -m 0644 "$HERE/../units/oyren-sandbox.service" /etc/systemd/system/oyren-sandbox.service

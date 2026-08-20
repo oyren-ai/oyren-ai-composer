@@ -11,6 +11,7 @@ const { runCaptured } = require("./runScript")
 const { runAction, runResultAction } = require("./controlRun")
 const { runStreaming, listRunLogs, readRunLog } = require("./runStream")
 const { routeAction } = require("./controlRoutes")
+const { switchSurface, surfaceStatus } = require("./editorSurface")
 const { jobs: defaultJobs } = require("./sharedJobs") // one process-wide registry, shared with runs.js
 
 function tokenOk(req, expected) {
@@ -35,7 +36,7 @@ function send(res, status, obj) {
 }
 
 /** Dispatch a `/_oyren/control/<action>` request against the supervisor. */
-async function handleControl(req, res, { supervisor, workdir, token, routes, runner = runCaptured, jobs = defaultJobs }) {
+async function handleControl(req, res, { supervisor, workdir, token, routes, runner = runCaptured, jobs = defaultJobs, exec }) {
   if (!tokenOk(req, token)) return send(res, 401, { error: "unauthorized" })
   const action = routeFor(req.url).kind === "control" ? req.url.split("?")[0].replace(/^\/_oyren\/control\/?/, "") : ""
   const body = req.method === "GET" ? {} : await readJson(req)
@@ -54,6 +55,15 @@ async function handleControl(req, res, { supervisor, workdir, token, routes, run
   if (action === "stop") return send(res, 200, await supervisor.stop())
   if (action === "status") return send(res, 200, await supervisor.status())
   if (action === "stats") return send(res, 200, await readContainerStats({ workdir }))
+
+  // Editor surface: which of the two editors this session is showing (streamed Zed / in-browser VS
+  // Code). One image now carries both, so switching is a systemd start+stop rather than a relaunch
+  // — see editorSurface.js. GET-able status so the app can render the right pane before switching.
+  if (action === "editor/status") return send(res, 200, await surfaceStatus({ exec }))
+  if (action === "editor/switch") {
+    const result = await switchSurface(body.surface, { exec })
+    return send(res, result.ok ? 200 : result.status, result)
+  }
 
   // Run a script and return its captured output — or `{ runId }` when detached (see controlRun.js).
   if (action === "run") {
