@@ -41,6 +41,7 @@ echo "==> launcher + unit"
 # only correct if all three live in one directory.
 install -d -m 0755 /usr/local/lib/oyren
 install -m 0755 "$HERE/start-browser.mjs" /usr/local/lib/oyren/start-browser.mjs
+install -m 0644 "$HERE/idleWatch.mjs" /usr/local/lib/oyren/idleWatch.mjs
 install -m 0644 "$HERE/../units/oyren-browser.service" /etc/systemd/system/oyren-browser.service
 
 # $BROWSER for every login shell AND every service that reads /etc/profile.d — this is what makes a

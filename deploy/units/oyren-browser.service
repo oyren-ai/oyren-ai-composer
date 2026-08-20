@@ -9,6 +9,13 @@
 # A viewer disconnect must never touch it — the launcher pins Xvnc's MaxDisconnectionTime /
 # MaxIdleTime / MaxConnectionTime to 0, so closing the tab mid-login only drops the WebSocket while
 # the half-finished sign-in stays on screen.
+#
+# The ONE deliberate exception is the idle timeout (idleWatch.mjs): after OYREN_BROWSER_IDLE_MINUTES
+# (default 30) with no viewer socket at all, the launcher exits 0 and this unit stays down — a
+# stopped browser is cheap to resume because Chrome's profile is on disk, so a completed login
+# survives it. That is also why the timeout is decided in the launcher rather than by KasmVNC's own
+# -MaxIdleTime: KasmVNC would kill Xvnc, Restart=on-failure below would read that as a crash, and
+# the "timeout" would become a respawn loop.
 [Unit]
 Description=Oyren in-VM browser (KasmVNC + openbox + Chrome)
 After=network-online.target

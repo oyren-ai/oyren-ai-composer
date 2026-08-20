@@ -13,9 +13,10 @@
 // (installed beside this file by install-zed.sh) for the X-server resolution and stale-display
 // cleanup, because those problems are identical and were already solved once.
 import { spawn } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mergedEnv } from './sessionEnv.mjs'
 import { cleanStaleDisplay, resolveXvncBin, waitForFile } from './zedStack.mjs'
+import { createIdleWatch } from './idleWatch.mjs'
 
 const env = mergedEnv()
 
@@ -32,6 +33,21 @@ const WS_PORT = env.OYREN_BROWSER_PORT ?? '6091'
 const HOME_DIR = env.HOME ?? '/home/oyren'
 const PROFILE_DIR = env.OYREN_BROWSER_PROFILE ?? `${HOME_DIR}/.oyren-browser`
 const START_URL = env.OYREN_BROWSER_START_URL ?? 'about:blank'
+// Stop the stack once nobody has watched it for this long. A browser costs ~300MB resident and a
+// KasmVNC stream is continuous pixel egress (~127 MiB/min of pooled droplet transfer accrues at the
+// xl tier), so a session that opened it for a two-minute OAuth login should not keep paying for it
+// all day. 0 disables. Stopping is cheap because the Chrome profile is on disk: the next
+// `oyren-open` restarts it already signed in.
+// Empty and unparseable both fall back to the default rather than to 0: an EnvironmentFile line
+// left blank (OYREN_BROWSER_IDLE_MINUTES=) reads as "" and Number("") is 0, which would silently
+// disable the timeout — the one failure mode this feature exists to prevent. Only an explicit,
+// parseable 0 disables it.
+const IDLE_MINUTES = Number.isFinite(Number(env.OYREN_BROWSER_IDLE_MINUTES))
+  && String(env.OYREN_BROWSER_IDLE_MINUTES ?? '').trim() !== ''
+  ? Number(env.OYREN_BROWSER_IDLE_MINUTES)
+  : 30
+const IDLE_MS = IDLE_MINUTES * 60_000
+const IDLE_POLL_MS = 30_000
 
 // Chrome comes from the image's Playwright install (/ms-playwright) rather than a second apt
 // browser: it is already there for the playwright MCP, already has its shared-library deps
@@ -114,3 +130,28 @@ supervise('chrome', resolveChrome(), [
   START_URL,
 ])
 console.log(`browser stack up: KasmVNC on 127.0.0.1:${WS_PORT}, display ${DISPLAY}, profile ${PROFILE_DIR}`)
+
+// Idle timeout. shutdown(0) — NOT a non-zero exit — is the whole mechanism: Restart=on-failure then
+// leaves the unit down until `oyren-open` starts it again, whereas KasmVNC's own -MaxIdleTime would
+// have Xvnc die, read as a crash, and respawn the stack in a loop. See idleWatch.mjs.
+if (IDLE_MS > 0) {
+  const watch = createIdleWatch({
+    port: Number(WS_PORT),
+    idleMs: IDLE_MS,
+    // Loopback only (Xvnc binds 127.0.0.1), so IPv4 is where the viewers are; tcp6 is read too
+    // because a future router change to ::1 would otherwise make every viewer invisible and stop a
+    // browser somebody is actively using.
+    readProc: () => ['/proc/net/tcp', '/proc/net/tcp6']
+      .map((f) => { try { return readFileSync(f, 'utf8') } catch { return '' } })
+      .join('\n'),
+  })
+  const timer = setInterval(() => {
+    const { idle, idleMs } = watch.tick()
+    if (idle) {
+      clearInterval(timer)
+      shutdown(0, `no viewer for ${Math.round(idleMs / 60_000)}m — stopping the browser (restart it with \`oyren-open <url>\`)`)
+    }
+  }, IDLE_POLL_MS)
+  timer.unref?.() // never let the poll alone keep the launcher alive
+  console.log(`idle timeout: ${IDLE_MS / 60_000}m with no viewer (OYREN_BROWSER_IDLE_MINUTES=0 to disable)`)
+}
