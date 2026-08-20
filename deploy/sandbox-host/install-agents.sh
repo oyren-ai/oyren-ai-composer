@@ -20,6 +20,7 @@ CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-1.1.2}"
 GEMINI_VERSION="${GEMINI_VERSION:-0.50.0}"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.17.18}"
 QWEN_VERSION="${QWEN_VERSION:-0.19.9}"
+DSH_VERSION="${DSH_VERSION:-0.1.0-rc.7}"
 ANTIGRAVITY_ACP_VERSION="${ANTIGRAVITY_ACP_VERSION:-1.0.0}"
 PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-0.0.78}"
 BUN_VERSION="${BUN_VERSION:-bun-v1.3.14}"
@@ -65,6 +66,28 @@ pg opencode-ai "$OPENCODE_VERSION"
 
 echo "==> qwen ${QWEN_VERSION}"
 pg @qwen-code/qwen-code "$QWEN_VERSION"
+
+# DeepSeek Harness. NPM, not pnpm, and the exception is load-bearing: dsh boots a Cordis plugin tree
+# whose loader resolves every bundle dependency (@deepseek-ai/dsh-settings-file,
+# dsh-credentials-local, …) from ITS OWN directory. Under pnpm's isolated store those are siblings it
+# cannot see, and boot dies with ERR_MODULE_NOT_FOUND on the first bundle — npm's flat global tree
+# resolves them. npm 11 also refuses lifecycle scripts unless they are named: on linux-x64 the ones
+# dsh's native seams declare (node-pty, koffi, the local subprocess/PTY backends) are no-ops today —
+# every one of them ships a prebuilt binary, and an install with and without the flag produced byte-
+# identical trees — but naming them is what keeps a later rc that genuinely needs a build from
+# installing silently half-built. Its published tag IS a developer-preview rc, which is also why the
+# pin matters more here than anywhere else in this file.
+echo "==> deepseek harness ${DSH_VERSION}"
+HOME=/root npm install -g \
+  --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs \
+  "@deepseek-ai/dsh@${DSH_VERSION}"
+# Same reasoning as claude's smoke check above: only running it proves the install is usable — a
+# half-resolved plugin tree still leaves a `dsh` on PATH that dies on its first boot.
+DSH_SMOKE="$(HOME=/root timeout 60 dsh --version 2>&1 || true)"
+case "$DSH_SMOKE" in
+  *"$DSH_VERSION"*) echo "    dsh smoke: $DSH_SMOKE" ;;
+  *) echo "ERROR: dsh does not run after install: $DSH_SMOKE" >&2; exit 1 ;;
+esac
 
 echo "==> cursor (vendor installer — no pinned version available)"
 su - "$SANDBOX_USER" -c 'curl https://cursor.com/install -fsS | bash'
@@ -137,4 +160,4 @@ rm -rf /var/lib/apt/lists/* "/home/$SANDBOX_USER/.npm"
 install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "/home/$SANDBOX_USER/.cache"
 chown -R "$SANDBOX_USER:$SANDBOX_USER" "$PNPM_HOME"
 
-echo "✅ agent CLIs installed (claude codex gemini cursor opencode qwen antigravity)"
+echo "✅ agent CLIs installed (claude codex gemini cursor opencode qwen antigravity deepseek-harness)"
