@@ -61,7 +61,7 @@ jobs:
       DO_SSH_KEY_ID: ${{ secrets.DO_SSH_KEY_ID || vars.DO_SSH_KEY_ID }}
       DO_REGION: ${{ inputs.region }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Preflight — required secrets present
         run: |
