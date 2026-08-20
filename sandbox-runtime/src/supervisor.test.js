@@ -38,6 +38,10 @@ test("start spawns the resolved command with PORT and reaches running when the p
   assert.equal(rec.calls.length, 1)
   assert.deepEqual(rec.calls[0].args, ["-lc", "node app.js"])
   assert.equal(rec.calls[0].opts.env.PORT, "3000")
+  // session-control secrets must never reach user code
+  assert.equal(rec.calls[0].opts.env.SESSION_TOKEN, undefined)
+  assert.equal(rec.calls[0].opts.env.CONTROL_TOKEN, undefined)
+  assert.equal(rec.calls[0].opts.env.GITHUB_TOKEN, undefined)
 })
 
 test("start stays in 'starting' when nothing is listening yet", async () => {

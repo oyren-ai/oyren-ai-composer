@@ -5,6 +5,7 @@
 // stdio:"inherit") and from the terminal PTY (interactive, no completion signal) — here we buffer and
 // resolve when the process exits.
 const { spawn } = require("child_process")
+const { appEnv } = require("./appEnv")
 
 const MAX_OUTPUT = 1024 * 1024 // cap each stream at 1 MiB so a runaway script can't exhaust memory
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes — matches the orchestrator's per-request ceiling
@@ -23,7 +24,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes — matches the orchestr
  * @param {object} opts.logger - Logger object
  * @param {function} opts.onOutput - Callback for incremental output: (stdout, stderr) => void
  */
-function runCaptured(command, { cwd, env = process.env, timeoutMs = DEFAULT_TIMEOUT_MS, spawnFn = spawn, logger = console, onOutput } = {}) {
+function runCaptured(command, { cwd, env = appEnv(), timeoutMs = DEFAULT_TIMEOUT_MS, spawnFn = spawn, logger = console, onOutput } = {}) {
   return new Promise((resolve) => {
     let stdout = ""
     let stderr = ""

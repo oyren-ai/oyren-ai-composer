@@ -5,6 +5,7 @@
 const net = require("net")
 const { spawn } = require("child_process")
 const { pipeChildOutput } = require("./logBuffer")
+const { appEnv } = require("./appEnv")
 
 /** Resolve true if something is accepting TCP connections on `port` within `timeoutMs`. */
 function tcpProbe(port, timeoutMs = 800) {
@@ -49,7 +50,9 @@ class Supervisor {
     this.managed = true
     this.state = "starting"
     this.error = null
-    const env = { ...process.env, PORT: String(this.exposedPort) }
+    // Scrub session-control secrets (SESSION_TOKEN/CONTROL_TOKEN/GITHUB_TOKEN) so user code
+    // can't inherit them; the app only needs the user-visible env plus its port.
+    const env = { ...appEnv(), PORT: String(this.exposedPort) }
     // Piped (not "inherit") so the app's output can be teed into the log buffer for /_oyren/logs;
     // pipeChildOutput() forwards every chunk straight through to this process's own stdout/stderr
     // first, so platform-level log capture (DO's runtime logs) sees exactly what it always did.
