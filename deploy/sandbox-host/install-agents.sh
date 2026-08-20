@@ -121,6 +121,14 @@ export AGY_BIN=/usr/local/bin/agy
 # Claude Code renders for a real TTY by default; the sandbox drives it headlessly over a pipe.
 export CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1
 export CLAUDE_CODE_DISABLE_MOUSE=1
+# The pinned claude is installed by root (this script IS the update channel — bump + re-bake), so
+# its self-updater cannot write its own prefix and every session footer shows
+# "Auto-update failed: no write permission to npm prefix · Run claude doctor".
+# seedClaudeSettings.js already puts this in ~/.claude/settings.json env, which is what covers the
+# non-login spawns (the editor extension, systemd units); this line covers the LOGIN shells that
+# file cannot be trusted for — a user's own settings.json write can drop it, and a session booted
+# from a snapshot older than that seeder never had it at all.
+export DISABLE_AUTOUPDATER=1
 export IS_SANDBOX=1
 EOF
 chmod 0644 /etc/profile.d/20-oyren-agents.sh
