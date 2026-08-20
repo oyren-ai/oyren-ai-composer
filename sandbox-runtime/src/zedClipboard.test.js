@@ -10,8 +10,8 @@ test("tokenFromUrl reads path segment 3 and decodes it", () => {
   assert.equal(tokenFromUrl("/_oyren/zed-clipboard"), "") // no token segment → "" (auth rejects)
 })
 
-test("wantsAutopaste defaults on, off only for autopaste=0", () => {
-  assert.equal(wantsAutopaste("/_oyren/zed-clipboard/t"), true)
+test("wantsAutopaste is opt-in (off by default, on only for autopaste=1)", () => {
+  assert.equal(wantsAutopaste("/_oyren/zed-clipboard/t"), false)
   assert.equal(wantsAutopaste("/_oyren/zed-clipboard/t?autopaste=1"), true)
   assert.equal(wantsAutopaste("/_oyren/zed-clipboard/t?autopaste=0"), false)
 })

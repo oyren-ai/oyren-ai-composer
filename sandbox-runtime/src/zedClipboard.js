@@ -8,13 +8,14 @@
 // Ctrl+V with xdotool so it lands in whatever Zed surface has focus (typically the agent panel input).
 //
 // URL CONTRACT:
-//   <session-origin>/_oyren/zed-clipboard/<SESSION_TOKEN>[?autopaste=0]
+//   <session-origin>/_oyren/zed-clipboard/<SESSION_TOKEN>[?autopaste=1]
 //   - POST only; the body is the raw image (Content-Type image/png|jpeg|gif|webp). Max 10 MiB.
 //   - Token at path segment 3, constant-time compared exactly like the zed proxy (fails closed 401).
-//   - autopaste=0 sets the clipboard but skips the synthetic Ctrl+V (the UI then tells the user to
-//     paste manually). Default: paste. The clipboard is ALWAYS set; auto-paste is best-effort and
-//     never fails the request, since a wrong-focus paste must not lose the image the user can still
-//     Ctrl+V by hand.
+//   - Default sets Zed's clipboard ONLY; the UI then tells the user to press Ctrl/⌘V in Zed. Opt in
+//     with autopaste=1 to ALSO fire a synthetic Ctrl+V — but that key lands wherever Zed has focus, so
+//     it disrupts the editor when focus isn't a text input (project panel, a code buffer). Off by
+//     default for exactly that reason; use it only when the paste target is known. The clipboard is
+//     ALWAYS set; a paste failure never fails the request.
 const { spawn } = require("child_process")
 const { tokenEq } = require("./sessionAuth")
 
@@ -34,11 +35,13 @@ function tokenFromUrl(rawUrl) {
   return decode(path.split("/")[3] || "")
 }
 
+// Opt-in: a blind synthetic Ctrl+V into whatever Zed has focused disrupts the editor unless the
+// target is a text input, so the default is clipboard-only and the user presses Ctrl/⌘V themselves.
 function wantsAutopaste(rawUrl) {
   try {
-    return new URL(rawUrl || "/", "http://localhost").searchParams.get("autopaste") !== "0"
+    return new URL(rawUrl || "/", "http://localhost").searchParams.get("autopaste") === "1"
   } catch {
-    return true
+    return false
   }
 }
 
