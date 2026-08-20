@@ -62,8 +62,16 @@ function mockReq({ method = "POST", url, headers = { "content-type": "image/png"
   return req
 }
 function mockRes() {
-  return { code: 0, body: "", writeHead(c) { this.code = c }, end(b) { this.body = b || "" } }
+  return { code: 0, body: "", headers: {}, writeHead(c, h) { this.code = c; Object.assign(this.headers, h || {}) }, end(b) { this.body = b || "" } }
 }
+
+test("handler answers the CORS preflight with 204 + allow headers", () => {
+  const res = mockRes()
+  handleZedClipboard(mockReq({ method: "OPTIONS", url: "/_oyren/zed-clipboard/tok" }), res, { sessionToken: "tok" })
+  assert.equal(res.code, 204)
+  assert.equal(res.headers["access-control-allow-origin"], "*")
+  assert.match(res.headers["access-control-allow-methods"], /POST/)
+})
 
 test("handler rejects non-POST", () => {
   const res = mockRes()
@@ -93,6 +101,7 @@ test("handler injects the body and 200s on a valid POST", () => {
   req.emit("data", Buffer.from("PNGDATA"))
   req.emit("end")
   assert.equal(res.code, 200)
+  assert.equal(res.headers["access-control-allow-origin"], "*") // cross-origin POST from the app chrome
   assert.deepEqual(JSON.parse(res.body), { ok: true, bytes: 7 })
   assert.deepEqual(seen, [{ cmd: "xclip", len: 7 }]) // autopaste=0 → no xdotool
 })

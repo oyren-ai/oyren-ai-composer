@@ -81,10 +81,25 @@ function defaultRunner(cmd, args, input, done) {
   else child.stdin.end()
 }
 
+// The capture control that calls this runs in the OYREN APP origin (the chrome around the stream),
+// not inside the KasmVNC iframe, so its POST is cross-origin. The path token is the only secret, so a
+// wildcard ACAO leaks nothing — anyone without the token gets 401 regardless. An image/* body is not
+// a CORS-safelisted content-type, so the browser preflights; answer OPTIONS before anything else.
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
+  "access-control-max-age": "86400",
+}
+
 function handleZedClipboard(req, res, { sessionToken, runner }) {
   const send = (code, body) => {
-    res.writeHead(code, { "content-type": "application/json" })
+    res.writeHead(code, { "content-type": "application/json", ...CORS })
     res.end(JSON.stringify(body))
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, CORS)
+    return res.end()
   }
   if (req.method !== "POST") return send(405, { error: "method not allowed" })
   if (!tokenEq(tokenFromUrl(req.url), sessionToken)) return send(401, { error: "unauthorized" })
