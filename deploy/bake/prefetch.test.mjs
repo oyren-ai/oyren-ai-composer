@@ -120,3 +120,14 @@ test("prefetch_assets skips an installer that is not present rather than failing
   assert.match(r.stdout, /skipping/)
   assert.match(r.stdout, /ok/)
 })
+
+test("an installer whose --print-assets contract broke warns instead of silently prefetching nothing", () => {
+  const dir = scratch()
+  const installer = join(dir, "install-broken.sh")
+  // A renamed flag, or a `set -e` exit above the --print-assets branch, both look like this.
+  writeFileSync(installer, "#!/usr/bin/env bash\nexit 0\n")
+  chmodSync(installer, 0o755)
+  const r = run(`prefetch_assets '${installer}' && echo not-fatal`)
+  assert.match(r.stderr, /declared no assets/)
+  assert.match(r.stdout, /not-fatal/)
+})

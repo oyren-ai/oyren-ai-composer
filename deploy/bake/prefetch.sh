@@ -48,13 +48,20 @@ prefetch_into_cache() {
 # Serial on purpose: the droplet's link already saturates on one download (20MB/s measured), so
 # concurrent curls would only make the log harder to read for no gain.
 prefetch_assets() {
-  local script name url rc=0
+  local script name url rc=0 found
   for script in "$@"; do
     [ -f "$script" ] || { echo "    skipping $script (not present)"; continue; }
+    found=0
     while read -r name url; do
       [ -n "${name:-}" ] && [ -n "${url:-}" ] || continue
+      found=$((found + 1))
       prefetch_into_cache "$name" "$url" || rc=$?
     done < <(bash "$script" --print-assets)
+    # An installer that declared nothing is a --print-assets contract that broke (renamed flag,
+    # a `set -e` exit above it). Not fatal — the installer will still download its own artifact —
+    # but it must be visible, or the prefetch silently stops paying and nobody notices.
+    [ "$found" -gt 0 ] \
+      || echo "    WARNING: $script declared no assets — its --print-assets contract may have moved" >&2
   done
   return "$rc"
 }

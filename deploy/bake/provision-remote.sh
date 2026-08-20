@@ -18,16 +18,6 @@ if [ ! -f /swapfile ]; then
   echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-# First boot races us for the dpkg lock (cloud-init's own apt activity, then unattended-upgrades) —
-# wait it out, then give apt a lock timeout for any stragglers.
-#
-# `cloud-init status --wait` alone is NOT enough: it returns while unattended-upgrades can still
-# hold the lock, and the lock that kills `apt-get update` is the LISTS lock, which
-# `-o DPkg::Lock::Timeout` does not wait on at all (that option covers the dpkg FRONTEND lock).
-# deploy/wait-for-apt.sh flocks all three and is what bake-install.sh and the zed stack install
-# already call — but this script is streamed over SSH by bake-base-snapshot.sh, so it can only
-# reach the copy in the checkout that same script rsyncs up moments earlier. Fall back to the bare
-# cloud-init wait if a caller ever runs this without pre-placing the checkout.
 # Start the big downloads NOW, in the background, and let them run under everything below. The next
 # ~100 seconds go to cloud-init's apt lock and then the Docker CE install — apt work that one vCPU
 # and the dpkg lock keep strictly serial while the network sits completely idle. The Zed tarball,
@@ -47,6 +37,16 @@ if [ -f /srv/composer/app/deploy/bake/parallel.sh ]; then
   PREFETCHING=1
 fi
 
+# First boot races us for the dpkg lock (cloud-init's own apt activity, then unattended-upgrades) —
+# wait it out, then give apt a lock timeout for any stragglers.
+#
+# `cloud-init status --wait` alone is NOT enough: it returns while unattended-upgrades can still
+# hold the lock, and the lock that kills `apt-get update` is the LISTS lock, which
+# `-o DPkg::Lock::Timeout` does not wait on at all (that option covers the dpkg FRONTEND lock).
+# deploy/wait-for-apt.sh flocks all three and is what bake-install.sh and the zed stack install
+# already call — but this script is streamed over SSH by bake-base-snapshot.sh, so it can only
+# reach the copy in the checkout that same script rsyncs up moments earlier. Fall back to the bare
+# cloud-init wait if a caller ever runs this without pre-placing the checkout.
 wait_for_apt() {
   if [ -f /srv/composer/app/deploy/wait-for-apt.sh ]; then
     bash /srv/composer/app/deploy/wait-for-apt.sh
