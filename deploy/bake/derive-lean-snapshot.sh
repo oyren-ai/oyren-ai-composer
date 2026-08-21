@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Derive the LEAN snapshot from an existing BASE snapshot.
 #
+# LEGACY PATH — kept until the lean-foundation bake (bake-lean-foundation.sh + `VARIANT=lean`
+# bake-base-snapshot.sh, docs/plans/lean-foundation-bake.md) has produced a lean image that a real
+# Lean Codespace has run on. The workflow no longer calls this script.
+#
 # Two snapshots exist because Mathlib costs 3-5GB and only the Lean app needs it. Rather than bake
 # everything twice, this boots one droplet from the finished base snapshot, adds Lean + Mathlib, and
 # snapshots it again. The two images then differ by exactly deploy/lean/install-lean.sh.
