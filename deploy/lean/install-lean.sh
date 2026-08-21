@@ -9,7 +9,11 @@
 # Everything else the Lean app needs — the editor, the agent CLIs, the runtime — is already in the
 # base snapshot, which is why deriving is cheap.
 #
-# Idempotent: safe to re-run. Runs as root on a droplet booted from the base snapshot.
+# Idempotent: safe to re-run. Runs as root, twice per Lean image: once on the lean-FOUNDATION bake
+# (deploy/bake/foundation-remote.sh — stock Ubuntu plus the oyren user, no editor yet), then again at
+# the end of the base provisioning that is laid on top of that foundation (bake-install.sh), which is
+# when the editor exists for the infoview extension. The second pass must be cheap — see the Mathlib
+# guard below. Also still works the old way, on a droplet booted from the base snapshot.
 set -euo pipefail
 
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
@@ -41,13 +45,37 @@ su - "$SANDBOX_USER" -c "curl -sSf https://elan.lean-lang.org/elan-init.sh \
 # a working language server instead of compiling on the user's first keystroke. The download cache
 # is removed afterwards — only the unpacked oleans are what the server and lake actually use, and
 # re-running `cache get` on a live droplet would just download it again.
-echo "==> Mathlib (cache get + build; several minutes)"
-su - "$SANDBOX_USER" -c "cd '$LEAN_DIR' && \
-  export PATH=\"\$HOME/.elan/bin:\$PATH\" && \
-  lake exe cache get && lake build && rm -rf \"\$HOME/.cache/mathlib\""
+#
+# That deletion is also why a re-run must NOT call `cache get` once the oleans are in place: with the
+# download cache gone it would refetch all of Mathlib. So the second pass only runs `lake build`, the
+# cheap proof that the toolchain and oleans still load — and only if deploy/lean/ is byte-identical
+# to what the foundation was built from. A changed pin with stale oleans would send `lake build` off
+# compiling Mathlib from source for hours; failing loudly here is the right outcome for that.
+LEAN_ENV="cd '$LEAN_DIR' && export PATH=\"\$HOME/.elan/bin:\$PATH\""
+LEAN_STAMP=/etc/oyren/lean-foundation.sha256
+LEAN_SUM="$(find "$HERE" -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1)"
+if find "$LEAN_DIR/.lake/packages/mathlib/.lake/build" -name 'Mathlib.olean' 2>/dev/null | grep -q .; then
+  if [ "$(cat "$LEAN_STAMP" 2>/dev/null)" != "$LEAN_SUM" ]; then
+    echo "ERROR: deploy/lean/ changed since this foundation was baked — re-bake the lean foundation" >&2
+    exit 1
+  fi
+  echo "==> Mathlib already built here — lake build only"
+  su - "$SANDBOX_USER" -c "$LEAN_ENV && lake build"
+else
+  echo "==> Mathlib (cache get + build; several minutes)"
+  su - "$SANDBOX_USER" -c "$LEAN_ENV && lake exe cache get && lake build && rm -rf \"\$HOME/.cache/mathlib\""
+  mkdir -p /etc/oyren
+  echo "$LEAN_SUM" > "$LEAN_STAMP"
+fi
 
-echo "==> vscode-lean4 extension (Open VSX — the infoview / goal state UI)"
-su - "$SANDBOX_USER" -c "'$EDITOR_DIR/bin/openvscode-server' --install-extension leanprover.lean4"
+# The infoview extension needs the editor, which a foundation bake does not have yet; the base
+# provisioning re-runs this script after the editor is installed, and that pass lands it.
+if [ -x "$EDITOR_DIR/bin/openvscode-server" ]; then
+  echo "==> vscode-lean4 extension (Open VSX — the infoview / goal state UI)"
+  su - "$SANDBOX_USER" -c "'$EDITOR_DIR/bin/openvscode-server' --install-extension leanprover.lean4"
+else
+  echo "==> vscode-lean4 extension: no editor on this box yet — deferred to the provisioning pass"
+fi
 
 # The editor and the agent both start in the Lean project when no repo is cloned.
 cat > /etc/profile.d/30-oyren-lean.sh <<EOF
@@ -56,4 +84,4 @@ export PATH="\$ELAN_HOME/bin:\$PATH"
 EOF
 chmod 0644 /etc/profile.d/30-oyren-lean.sh
 
-echo "✅ Lean + Mathlib installed — snapshot this droplet as the lean variant"
+echo "✅ Lean + Mathlib installed"

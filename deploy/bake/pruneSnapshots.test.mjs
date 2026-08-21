@@ -22,6 +22,8 @@ const ids = (plan, family, key) => plan.find((f) => f.family === family)[key].ma
 test("only the bake's own snapshot names are candidates", () => {
   assert.equal(familyOf("oyren-sandbox-base-2026-08-19-1000"), "base")
   assert.equal(familyOf("oyren-sandbox-zed-2026-08-19-1000"), "zed")
+  assert.equal(familyOf("oyren-sandbox-lean-2026-08-21-0101"), "lean")
+  assert.equal(familyOf("oyren-sandbox-leanfoundation-2026-08-21-2000"), "leanfoundation")
   assert.equal(familyOf("my-own-backup"), null)
   assert.equal(familyOf("oyren-sandbox-experimental-2026-08-01-1000"), null)
   assert.equal(familyOf(undefined), null)
@@ -72,7 +74,7 @@ test("a family with fewer snapshots than keep loses nothing", () => {
 
 test("an empty family is reported, not skipped", () => {
   const plan = planPrune([], { keep: 2 })
-  assert.deepEqual(plan.map((f) => f.family), ["base", "zed", "lean"])
+  assert.deepEqual(plan.map((f) => f.family), ["base", "zed", "lean", "leanfoundation"])
   assert.deepEqual(plan.flatMap((f) => f.kept), [])
 })
 

@@ -1,0 +1,35 @@
+name: Bake preflight
+description: Fail fast on missing DigitalOcean config and runner tools; install the bake SSH key when one is provided. Shared by every bake job.
+inputs:
+  ssh_private_key:
+    description: "BAKE_SSH_PRIVATE_KEY — optional; without it the runner's existing SSH identity is used"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Required config present
+      shell: bash
+      run: |
+        miss=
+        [ -n "$DO_API_TOKEN" ] || miss="$miss DIGITALOCEAN_ACCESS_TOKEN"
+        [ -n "$DO_SSH_KEY_ID" ] || miss="$miss DO_SSH_KEY_ID(secret-or-var)"
+        if [ -n "$miss" ]; then
+          echo "::error::Missing required config:$miss — add it to the repo/org before baking."
+          exit 1
+        fi
+        for t in curl jq rsync ssh; do command -v "$t" >/dev/null || { echo "::error::runner is missing $t"; exit 1; }; done
+        echo "preflight ok"
+    - name: Install bake SSH key (if provided)
+      shell: bash
+      env:
+        BAKE_SSH_PRIVATE_KEY: ${{ inputs.ssh_private_key }}
+      run: |
+        if [ -n "$BAKE_SSH_PRIVATE_KEY" ]; then
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$BAKE_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "installed bake SSH key from BAKE_SSH_PRIVATE_KEY"
+        else
+          echo "no BAKE_SSH_PRIVATE_KEY secret — relying on the runner's existing SSH identity"
+        fi

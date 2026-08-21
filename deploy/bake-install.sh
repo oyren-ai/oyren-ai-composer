@@ -60,6 +60,14 @@ if [ "${SANDBOX_HOST:-1}" = "1" ]; then
   # and a $BROWSER hook, and nothing else to the image. It exists because an agent CLI's OAuth
   # callback is a LOOPBACK url: only a browser ON this machine can complete a codex/claude login.
   bash "$APP_DIR/deploy/browser/install-browser.sh"
+  # A LEAN bake (bake-base-snapshot.sh started from the lean-foundation image) already carries the
+  # toolchain + Mathlib under ~oyren. What it still lacks is what install-lean.sh could not do before
+  # the editor and /app existed: the infoview extension, and the Lean skills under /app/skills
+  # (install-runtime.sh wipes /app). The re-run is idempotent and cheap — Mathlib is only fetched
+  # when absent. A plain base bake has no ~oyren/.elan and skips this, so the base stays Lean-free.
+  if [ -d "/home/${SANDBOX_USER:-oyren}/.elan" ]; then
+    bash "$APP_DIR/deploy/lean/install-lean.sh"
+  fi
 fi
 
 echo "==> systemd units (enabled; inert until cloud-init writes their env file)"

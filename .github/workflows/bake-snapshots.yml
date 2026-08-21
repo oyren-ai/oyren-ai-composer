@@ -1,38 +1,39 @@
 name: Bake snapshots
 
-# Manual bake of the DigitalOcean sandbox snapshots, on the self-hosted runner (it has the DO API +
-# SSH reachability the bake needs — see deploy/bake/*.sh). Composer has no other Actions; this is the
-# one-click replacement for running the bake scripts by hand.
+# Manual bake of the DigitalOcean sandbox snapshots on a GitHub-hosted runner — the bake only needs
+# the DO API plus SSH to its own throwaway droplet (deploy/bake/*.sh). Composer's one-click
+# replacement for running the bake scripts by hand.
 #
-# What it does, gated by the inputs:
-#   1. bake_base   → new BASE snapshot (carries /app runtime incl. the zed-clipboard route)
-#   2. derive_zed  → ZED snapshot from that base (adds KasmVNC + Zed + xclip/xdotool)
-#   3. derive_lean → LEAN snapshot from that base (Mathlib toolchain)
-# The base id flows into the derives automatically; pass base_snapshot_id to derive off an existing
-# base without re-baking.
+# Three images; the two session images bake in PARALLEL off the same checkout:
+#   base            bake_base             stock Ubuntu → full provisioning            every session
+#   lean            bake_lean             lean FOUNDATION → the same provisioning     Lean sessions
+#   leanfoundation  bake_lean_foundation  stock Ubuntu → oyren user + elan + Mathlib  only when deploy/lean/ changed
+# The lean job builds from lean_foundation_id, else the foundation this run just baked, else the
+# newest oyren-sandbox-leanfoundation-* in the account. The zed image IS the base image.
+# Design: docs/plans/lean-foundation-bake.md.
 #
-# AFTER a run: point the orchestrator at the new image ids (DROPLET_SNAPSHOT_ID = base, plus the zed
-# snapshot id in its config) and redeploy it — that step is NOT automated here.
+# AFTER a run: point the orchestrator at the new ids (DROPLET_SNAPSHOT_ID + DROPLET_SNAPSHOT_ID_ZED
+# = base, DROPLET_SNAPSHOT_ID_LEAN = lean) and redeploy it — that step is NOT automated here.
 
 on:
   workflow_dispatch:
     inputs:
       bake_base:
-        description: "Bake a new BASE snapshot"
+        description: "Bake a new BASE snapshot (it is also the zed image)"
         type: boolean
         default: true
-      base_snapshot_id:
-        description: "Existing base image id to derive from (only used when bake_base is off)"
-        type: string
-        default: ""
-      derive_zed:
-        description: "Derive the ZED snapshot (xclip/xdotool + Zed)"
-        type: boolean
-        default: true
-      derive_lean:
-        description: "Derive the LEAN snapshot"
+      bake_lean:
+        description: "Bake a new LEAN snapshot (full provisioning on top of a lean foundation)"
         type: boolean
         default: false
+      bake_lean_foundation:
+        description: "First bake a new LEAN FOUNDATION (only when deploy/lean/ changed)"
+        type: boolean
+        default: false
+      lean_foundation_id:
+        description: "Lean-foundation image id to build the lean snapshot from (blank = this run's, else the newest in the account)"
+        type: string
+        default: ""
       region:
         description: "DigitalOcean region"
         type: string
@@ -45,110 +46,113 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # DO_API_TOKEN is what the bake scripts read; the org secret is named DIGITALOCEAN_ACCESS_TOKEN.
+  DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+  # The id/fingerprint of an SSH key uploaded to DO, so the throwaway droplets are reachable.
+  DO_SSH_KEY_ID: ${{ secrets.DO_SSH_KEY_ID || vars.DO_SSH_KEY_ID }}
+  DO_REGION: ${{ inputs.region }}
+
 jobs:
-  bake:
-    # GitHub-hosted: the bake only needs curl/jq/rsync/ssh + outbound to the DO API and SSH to the
-    # throwaway droplet's public IP — no self-hosted runner required (and oyren-gh-runner is repo-
-    # scoped to oyren-ai-next, so composer can't use it anyway). To move this onto a self-hosted
-    # runner later, set runs-on to that runner's labels.
+  foundation:
+    if: ${{ inputs.bake_lean_foundation }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      # DO_API_TOKEN is what the bake scripts read; the org secret is named DIGITALOCEAN_ACCESS_TOKEN.
-      DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      # The id/fingerprint of an SSH key uploaded to DO, so the throwaway bake droplet is reachable.
-      # A plain id, not really secret — accept either a secret or a repo/org variable.
-      DO_SSH_KEY_ID: ${{ secrets.DO_SSH_KEY_ID || vars.DO_SSH_KEY_ID }}
-      DO_REGION: ${{ inputs.region }}
+    timeout-minutes: 45
+    outputs:
+      id: ${{ steps.bake.outputs.id }}
     steps:
       - uses: actions/checkout@v5
-
-      - name: Preflight — required secrets present
+      - uses: ./.github/actions/bake-preflight
+        with:
+          ssh_private_key: ${{ secrets.BAKE_SSH_PRIVATE_KEY }}
+      - name: Bake LEAN FOUNDATION snapshot
+        id: bake
         run: |
-          miss=
-          [ -n "$DO_API_TOKEN" ] || miss="$miss DIGITALOCEAN_ACCESS_TOKEN"
-          [ -n "$DO_SSH_KEY_ID" ] || miss="$miss DO_SSH_KEY_ID(secret-or-var)"
-          if [ -n "$miss" ]; then
-            echo "::error::Missing required config:$miss — add it to the repo/org before baking."
-            exit 1
-          fi
-          for t in curl jq rsync ssh; do command -v "$t" >/dev/null || { echo "::error::runner is missing $t"; exit 1; }; done
-          echo "preflight ok"
+          set -o pipefail
+          bash deploy/bake/bake-lean-foundation.sh | tee /tmp/foundation.log
+          id="$(grep -oiE 'image id: [0-9]+' /tmp/foundation.log | grep -oE '[0-9]+' | tail -1)"
+          [ -n "$id" ] || { echo "::error::could not parse foundation image id from output"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
-      - name: Install bake SSH key (if a key secret is provided)
-        env:
-          BAKE_SSH_PRIVATE_KEY: ${{ secrets.BAKE_SSH_PRIVATE_KEY }}
-        run: |
-          if [ -n "$BAKE_SSH_PRIVATE_KEY" ]; then
-            mkdir -p ~/.ssh && chmod 700 ~/.ssh
-            printf '%s\n' "$BAKE_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-            chmod 600 ~/.ssh/id_ed25519
-            echo "installed bake SSH key from BAKE_SSH_PRIVATE_KEY"
-          else
-            echo "no BAKE_SSH_PRIVATE_KEY secret — relying on the runner's existing SSH identity"
-          fi
-
+  base:
+    if: ${{ inputs.bake_base }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      id: ${{ steps.bake.outputs.id }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/bake-preflight
+        with:
+          ssh_private_key: ${{ secrets.BAKE_SSH_PRIVATE_KEY }}
       - name: Bake BASE snapshot
-        id: base
-        if: ${{ inputs.bake_base }}
+        id: bake
         run: |
           set -o pipefail
           bash deploy/bake/bake-base-snapshot.sh | tee /tmp/base.log
           id="$(grep -oiE 'image id: [0-9]+' /tmp/base.log | grep -oE '[0-9]+' | tail -1)"
           [ -n "$id" ] || { echo "::error::could not parse base image id from output"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
-          echo "baked base snapshot: $id"
 
-      - name: Resolve base id for derives
+  lean:
+    needs: foundation
+    # Runs when asked, whether the foundation job ran (success) or was not requested (skipped).
+    if: ${{ !cancelled() && inputs.bake_lean && (needs.foundation.result == 'success' || needs.foundation.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      id: ${{ steps.bake.outputs.id }}
+      foundation: ${{ steps.resolve.outputs.id }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/bake-preflight
+        with:
+          ssh_private_key: ${{ secrets.BAKE_SSH_PRIVATE_KEY }}
+      - name: Resolve the lean foundation to build on
         id: resolve
-        if: ${{ inputs.derive_zed || inputs.derive_lean }}
+        env:
+          INPUT_ID: ${{ inputs.lean_foundation_id }}
+          BAKED_ID: ${{ needs.foundation.outputs.id }}
         run: |
-          base="${{ steps.base.outputs.id }}"
-          [ -n "$base" ] || base="${{ inputs.base_snapshot_id }}"
-          if [ -z "$base" ]; then
-            echo "::error::no base snapshot id — enable bake_base or pass base_snapshot_id"
-            exit 1
+          id="${INPUT_ID:-$BAKED_ID}"
+          if [ -z "$id" ]; then
+            id="$(curl -fsS -H "Authorization: Bearer $DO_API_TOKEN" \
+              'https://api.digitalocean.com/v2/snapshots?resource_type=droplet&per_page=200' \
+              | jq -r '[.snapshots[] | select(.name | startswith("oyren-sandbox-leanfoundation-"))] | sort_by(.created_at) | last | .id // empty')"
           fi
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-
-      - name: Derive ZED snapshot
-        id: zed
-        if: ${{ inputs.derive_zed }}
-        env:
-          BASE_SNAPSHOT_ID: ${{ steps.resolve.outputs.base }}
-        run: |
-          set -o pipefail
-          bash deploy/bake/derive-zed-snapshot.sh | tee /tmp/zed.log
-          id="$(grep -oiE 'image id: [0-9]+' /tmp/zed.log | grep -oE '[0-9]+' | tail -1)"
-          [ -n "$id" ] || { echo "::error::could not parse zed image id from output"; exit 1; }
+          [ -n "$id" ] || { echo "::error::no lean foundation to build on — tick bake_lean_foundation or pass lean_foundation_id"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
-
-      - name: Derive LEAN snapshot
-        id: lean
-        if: ${{ inputs.derive_lean }}
+          echo "lean foundation: $id"
+      - name: Bake LEAN snapshot (base provisioning on top of the foundation)
+        id: bake
         env:
-          BASE_SNAPSHOT_ID: ${{ steps.resolve.outputs.base }}
+          BASE_IMAGE: ${{ steps.resolve.outputs.id }}
+          VARIANT: lean
         run: |
           set -o pipefail
-          bash deploy/bake/derive-lean-snapshot.sh | tee /tmp/lean.log
+          bash deploy/bake/bake-base-snapshot.sh | tee /tmp/lean.log
           id="$(grep -oiE 'image id: [0-9]+' /tmp/lean.log | grep -oE '[0-9]+' | tail -1)"
           [ -n "$id" ] || { echo "::error::could not parse lean image id from output"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
+  summary:
+    needs: [foundation, base, lean]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Summary
-        if: always()
         run: |
           {
             echo "## Bake results"
             echo ""
             echo "| Snapshot | Image id |"
             echo "|---|---|"
-            echo "| base | ${{ steps.base.outputs.id || inputs.base_snapshot_id || '(not baked)' }} |"
-            echo "| zed  | ${{ steps.zed.outputs.id || '(not derived)' }} |"
-            echo "| lean | ${{ steps.lean.outputs.id || '(not derived)' }} |"
+            echo "| base (= zed) | ${{ needs.base.outputs.id || '(not baked)' }} |"
+            echo "| lean | ${{ needs.lean.outputs.id || '(not baked)' }} |"
+            echo "| lean foundation | ${{ needs.foundation.outputs.id || needs.lean.outputs.foundation || '(not baked)' }} |"
             echo ""
             echo "### Next (manual — not automated)"
             echo "Point the orchestrator at the new images and redeploy it:"
-            echo "- \`DROPLET_SNAPSHOT_ID\` = the **base** id above"
-            echo "- the **zed** snapshot id in the orchestrator's zed-snapshot config"
+            echo "- \`DROPLET_SNAPSHOT_ID\` and \`DROPLET_SNAPSHOT_ID_ZED\` = the **base** id"
+            echo "- \`DROPLET_SNAPSHOT_ID_LEAN\` = the **lean** id"
           } >> "$GITHUB_STEP_SUMMARY"
