@@ -9,8 +9,11 @@
 // https://x.ondigitalocean.app or http://localhost:8080.
 const net = require("net")
 const { renderPage, escapeHtml } = require("./pageShell")
-const { routesCard, downloadsCard, logsCard } = require("./gatewaySections")
+const { surfacesCard, routesCard, downloadsCard, logsCard } = require("./gatewaySections")
 const { howToCard, reservedCard } = require("./gatewayReserved")
+const { IDE_PREFIX, IDE_PORT } = require("./ide")
+const { ZED_PREFIX, ZED_PORT } = require("./zedProxy")
+const { BROWSER_PREFIX, BROWSER_PORT } = require("./browserProxy")
 
 /** Quick TCP probe: resolves true if something is listening on the port. */
 function tcpProbe(port, timeoutMs = 400) {
@@ -24,18 +27,35 @@ function tcpProbe(port, timeoutMs = 400) {
   })
 }
 
+/** The workbench surfaces, each linked with the session token in the path segment its auth reads
+ *  (ide.js / vncProxy.js check segment 3). Rendered tokenless — routerApp's unauthenticated
+ *  fallback — the links degrade to the bare prefix, exactly like the download/logs links do. */
+async function probeSurfaces(sessionToken, probe) {
+  const gated = (prefix) => (sessionToken ? `${prefix}/${encodeURIComponent(sessionToken)}/` : `${prefix}/`)
+  const [ide, zed, browser] = await Promise.all([IDE_PORT, ZED_PORT, BROWSER_PORT].map((p) => probe(p)))
+  return [
+    { name: "VS Code", path: `${IDE_PREFIX}/`, href: gated(IDE_PREFIX), up: ide },
+    { name: "Zed", path: `${ZED_PREFIX}/`, href: gated(ZED_PREFIX), up: zed },
+    { name: "Browser", path: `${BROWSER_PREFIX}/`, href: gated(BROWSER_PREFIX), up: browser },
+    { name: "Terminal", path: "/terminal", href: null, up: null }, // WebSocket — nothing to open, nothing to probe
+  ]
+}
+
 /** Build the HTML for the gateway page. `routes` is an array from Routes.list(), `sessionToken`
  *  is the SESSION_TOKEN (carried on every gated link), `exposedPort` is the supervisor's default
  *  port. `probe` is injectable so tests don't depend on what happens to listen on this machine. */
 async function renderGateway({ routes = [], sessionToken = "", exposedPort = null, probe = tcpProbe } = {}) {
-  const [probes, expUp] = await Promise.all([
+  const [probes, expUp, surfaces] = await Promise.all([
     Promise.all(routes.map(async (r) => ({ ...r, listening: await probe(r.port) }))),
     exposedPort ? probe(exposedPort) : false,
+    probeSurfaces(sessionToken, probe),
   ])
   const query = sessionToken ? `?token=${encodeURIComponent(sessionToken)}` : ""
   const body = `  <main>
     <h1>Oyren Gateway</h1>
-    <p class="sub">Your container is running. Use the routes below to access services.</p>
+    <p class="sub">This Codespace is running. The routes below are what its public URL serves.</p>
+
+    ${surfacesCard(surfaces)}
 
     ${routesCard(probes, exposedPort, expUp)}
 

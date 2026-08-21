@@ -5,12 +5,24 @@ const { escapeHtml } = require("./pageShell")
 
 const RESERVED = [
   ["/_oyren/gateway", "This page"],
+  ["/_oyren/ide/*", "The browser IDE (VS Code) — reserved so a \"/\" route can never evict it"],
+  ["/_oyren/zed/*", "The streamed Zed editor (KasmVNC)"],
+  ["/_oyren/zed-clipboard", "Image → clipboard injection for the streamed-Zed session"],
+  ["/_oyren/browser/*", "The in-VM browser's stream — where an agent CLI's loopback OAuth callback lands"],
+  ["/_oyren/port/*", "Session-token-gated proxy to any loopback port (dev servers, previews)"],
   ["/_oyren/download", "Download staged deliverables"],
   ["/_oyren/logs", "Recent server + app logs"],
+  ["/_oyren/runs", "JSON list of detached script runs + their output"],
+  ["/_oyren/runs.html", "Browsable view of those same runs"],
   ["/_oyren/health", "Health check (always 200)"],
   ["/_oyren/control/*", "Control API (authenticated)"],
   ["/terminal", "WebSocket terminal"],
-  ["/agent/message", "Headless agent chat"],
+  ["/agent/message", "Headless agent chat — inject one user turn"],
+  ["/agent/stream", "The persistent read side of the agent chat (ndjson)"],
+  ["/agent/current", "Live agent session state (busy / model)"],
+  ["/agent/interrupt", "Stop the running agent turn"],
+  ["/agent/models", "The models this session exposes"],
+  ["/agent/model", "Switch the agent's model"],
 ]
 
 function howToCard() {
