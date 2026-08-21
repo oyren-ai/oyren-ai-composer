@@ -30,11 +30,25 @@ set -u
 # fake xclip and a fake socket dir. Nothing in the image sets them.
 REAL="${XCLIP_SHIM_REAL:-/usr/bin/xclip}"
 X11_DIR="${XCLIP_SHIM_X11_DIR:-/tmp/.X11-unix}"
+# xdotool is installed in the same apt line as xclip (install-zed-stack.sh), so it is always here.
+XDOTOOL="${XCLIP_SHIM_XDOTOOL:-/usr/bin/xdotool}"
 [ -x "$REAL" ] || { echo "xclip-shim: real xclip missing at $REAL" >&2; exit 127; }
 
 # Is $1 a display with a server actually answering on it?
+#
+# Deliberately NOT `xclip -t TARGETS -o`: that asks the CLIPBOARD selection for its targets, and an
+# unowned selection answers "target TARGETS not available" with exit 1 on a perfectly healthy
+# display. Probing that way made an EMPTY clipboard indistinguishable from a dead X server, so the
+# shim gave up and left DISPLAY unset. `xdotool getdisplaygeometry` asks the server itself and does
+# not care whether anything owns a selection.
 display_live() {
-  DISPLAY="$1" "$REAL" -selection clipboard -t TARGETS -o >/dev/null 2>&1
+  if [ -x "$XDOTOOL" ]; then
+    DISPLAY="$1" "$XDOTOOL" getdisplaygeometry >/dev/null 2>&1
+  else
+    # No xdotool (a trimmed image): fall back to the selection probe. It is wrong for an empty
+    # clipboard, but a wrong-but-usable answer beats refusing to resolve a display at all.
+    DISPLAY="$1" "$REAL" -selection clipboard -t TARGETS -o >/dev/null 2>&1
+  fi
 }
 
 if [ -z "${DISPLAY:-}" ]; then

@@ -20,12 +20,20 @@ const SHIM = fileURLToPath(new URL("./xclip-shim", import.meta.url))
  * prints the DISPLAY it saw plus its argv, which is what the assertions read.
  */
 const FAKE_XCLIP = `#!/bin/sh
-case " $LIVE " in *" \${DISPLAY:-none} "*) live=yes ;; *) live=no ;; esac
+# The TARGETS branch models an UNOWNED selection when \$EMPTY_CLIPBOARD is set: real xclip exits 1
+# with "target TARGETS not available" there, on a display that is perfectly alive.
 if [ "$1" = "-selection" ] && [ "$3" = "-t" ] && [ "$4" = "TARGETS" ]; then
-  [ "$live" = yes ] || exit 1
-  echo "TARGETS"; exit 0
+  [ -z "\${EMPTY_CLIPBOARD:-}" ] || exit 1
+  case " $LIVE " in *" \${DISPLAY:-none} "*) echo "TARGETS"; exit 0 ;; esac
+  exit 1
 fi
 echo "DISPLAY=\${DISPLAY:-none} ARGS=$*"
+`
+
+/** Stands in for xdotool: asks the SERVER, so it answers regardless of who owns a selection. */
+const FAKE_XDOTOOL = `#!/bin/sh
+case " $LIVE " in *" \${DISPLAY:-none} "*) echo "1480 566"; exit 0 ;; esac
+exit 1
 `
 
 /** Build a sandbox: a fake xclip, plus an X11 socket dir seeded with `sockets` (e.g. [":91"]). */
@@ -34,14 +42,17 @@ const sandbox = (sockets = []) => {
   const fake = join(dir, "xclip")
   writeFileSync(fake, FAKE_XCLIP)
   chmodSync(fake, 0o755)
+  const xdo = join(dir, "xdotool")
+  writeFileSync(xdo, FAKE_XDOTOOL)
+  chmodSync(xdo, 0o755)
   const x11 = join(dir, "X11-unix")
   mkdirSync(x11)
   for (const s of sockets) writeFileSync(join(x11, `X${s.slice(1)}`), "")
-  return { dir, fake, x11 }
+  return { dir, fake, xdo, x11 }
 }
 
 /** Run the shim. `live` lists displays with a server answering; `display` presets $DISPLAY. */
-const run = ({ live = "", display, sockets = [], args = ["-selection", "clipboard", "-o"] }) => {
+const run = ({ live = "", display, sockets = [], args = ["-selection", "clipboard", "-o"], emptyClipboard = false, noXdotool = false }) => {
   const box = sandbox(sockets)
   try {
     const env = {
@@ -49,7 +60,9 @@ const run = ({ live = "", display, sockets = [], args = ["-selection", "clipboar
       LIVE: live,
       XCLIP_SHIM_REAL: box.fake,
       XCLIP_SHIM_X11_DIR: box.x11,
+      XCLIP_SHIM_XDOTOOL: noXdotool ? join(box.dir, "no-xdotool") : box.xdo,
     }
+    if (emptyClipboard) env.EMPTY_CLIPBOARD = "1"
     if (display !== undefined) env.DISPLAY = display
     return execFileSync("/bin/sh", [SHIM, ...args], { env, encoding: "utf8" }).trim()
   } finally {
@@ -101,4 +114,17 @@ test("a missing real xclip fails loudly instead of re-entering the shim", () => 
   }
   assert.equal(threw?.status, 127)
   assert.match(String(threw?.stderr), /real xclip missing/)
+})
+
+test("the regression: an EMPTY clipboard must not read as a dead display", () => {
+  // The first probe was `xclip -t TARGETS -o`, which exits 1 on an unowned selection. That made a
+  // healthy :90 with nothing copied yet look dead, so the shim left DISPLAY unset and every
+  // clipboard read failed with "Can't open display".
+  const out = run({ live: ":90", emptyClipboard: true })
+  assert.match(out, /DISPLAY=:90/)
+})
+
+test("without xdotool it still resolves a display that owns a selection", () => {
+  const out = run({ live: ":90", noXdotool: true })
+  assert.match(out, /DISPLAY=:90/)
 })
