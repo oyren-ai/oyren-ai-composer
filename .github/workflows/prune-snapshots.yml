@@ -1,0 +1,83 @@
+name: Prune snapshots
+
+# Manual cleanup of the DigitalOcean droplet snapshots the bakes leave behind — the workflow_dispatch
+# wrapper deploy/bake/pruneSnapshots.mjs asks for. Every bake adds a ~13GB image (~22GB for lean) and
+# nothing else ever removes one, so the account accumulates them at DO's per-GB monthly rate forever.
+#
+# DRY RUN BY DEFAULT: the job prints the plan (keep / DELETE per family, GB reclaimed) and stops.
+# Tick `apply` to delete for real. Two things always survive, apply or not: the newest `keep`
+# snapshots of each family (base / zed / lean), and every id listed in `protect` — pass the ones the
+# orchestrator is deployed with (DROPLET_SNAPSHOT_ID, DROPLET_SNAPSHOT_ID_ZED, DROPLET_SNAPSHOT_ID_LEAN).
+# Only `oyren-sandbox-<family>-<timestamp>` names are ever candidates; hand-made snapshots are not.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Snapshots to keep per family (base / zed / lean), newest first"
+        type: string
+        default: "2"
+      protect:
+        description: "Image ids that must survive regardless, comma-separated (the ids the orchestrator runs with)"
+        type: string
+        default: ""
+      apply:
+        description: "Actually delete (off = dry run: print the plan only)"
+        type: boolean
+        default: false
+
+# Same group as the bake, so a prune can never run while a bake is mid-snapshot — it queues instead.
+concurrency:
+  group: bake-snapshots
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Same org secret the bake uses; the script reads DO_API_TOKEN.
+      DO_API_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      KEEP: ${{ inputs.keep }}
+      PROTECT: ${{ inputs.protect }}
+      APPLY: ${{ inputs.apply }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Preflight — token present, inputs well-formed
+        run: |
+          [ -n "$DO_API_TOKEN" ] || { echo "::error::DIGITALOCEAN_ACCESS_TOKEN secret is missing"; exit 1; }
+          [[ "$KEEP" =~ ^[0-9]+$ ]] || { echo "::error::keep must be a whole number, got '$KEEP'"; exit 1; }
+          [[ "$PROTECT" =~ ^[0-9,[:space:]]*$ ]] || { echo "::error::protect must be comma-separated numeric image ids, got '$PROTECT'"; exit 1; }
+          echo "keep=$KEEP protect='${PROTECT:-none}' apply=$APPLY"
+
+      - name: Plan (and apply, if asked)
+        id: prune
+        run: |
+          set -o pipefail
+          args=(--keep="$KEEP")
+          [ -n "$PROTECT" ] && args+=(--protect="$(echo "$PROTECT" | tr -d '[:space:]')")
+          [ "$APPLY" = "true" ] && args+=(--apply)
+          node deploy/bake/pruneSnapshots.mjs "${args[@]}" | tee /tmp/prune.log
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            if [ "$APPLY" = "true" ]; then echo "## Prune snapshots — APPLIED"; else echo "## Prune snapshots — dry run (nothing deleted)"; fi
+            echo ""
+            echo '```'
+            cat /tmp/prune.log 2>/dev/null || echo "(no plan — the job failed before printing one)"
+            echo '```'
+            if [ "$APPLY" != "true" ]; then
+              echo ""
+              echo "To delete, re-run with **apply** ticked. Put the ids the orchestrator is deployed with in **protect** first."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

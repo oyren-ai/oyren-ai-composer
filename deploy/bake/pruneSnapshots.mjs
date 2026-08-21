@@ -9,9 +9,9 @@
 // in the account — hand-made snapshots, other projects, volume snapshots — is never a candidate.
 //
 // RUNNING IT: `DO_API_TOKEN=... node deploy/bake/pruneSnapshots.mjs --keep=2 --protect=<live ids>`
-// prints the plan and exits; add --apply to delete. A `Prune snapshots` workflow_dispatch wrapper
-// around this exact command belongs in .github/workflows (see the PR that added this file — the
-// bot that opened it cannot push workflow files).
+// prints the plan and exits; add --apply to delete. The manual `Prune snapshots` workflow
+// (.github/workflows/prune-snapshots.yml) wraps this exact command with keep / protect / apply
+// inputs and posts the plan as the run summary.
 //
 // SAFETY: the newest `keep` per family always survive, ids passed with --protect are never deleted
 // (pass the ones the orchestrator is deployed with: DROPLET_SNAPSHOT_ID{,_ZED,_LEAN}), and nothing
