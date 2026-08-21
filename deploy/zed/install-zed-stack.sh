@@ -52,6 +52,16 @@ command -v node >/dev/null \
   || { echo "ERROR: node missing — the base snapshot always has it; nothing can patch the web client" >&2; exit 1; }
 node "$HERE/kasmClipboardPatch.mjs" /usr/share/kasmvnc/www
 
+# Agents shell out to a bare `xclip` to read a pasted image, and inherit whatever DISPLAY their
+# spawner had — which for the tmux session behind the web/editor terminal is none at all. The shim
+# resolves a live display itself so Ctrl+V works for every agent regardless of how it was started;
+# see deploy/zed/xclip-shim for why this is not an exported DISPLAY. /usr/local/bin precedes
+# /usr/bin on PATH, so it shadows the apt binary without replacing it.
+echo "==> installing the xclip DISPLAY shim"
+install -m 0755 "$HERE/xclip-shim" /usr/local/bin/xclip
+[ "$(command -v xclip)" = /usr/local/bin/xclip ] \
+  || { echo "ERROR: /usr/local/bin/xclip is not first on PATH ($(command -v xclip)) — shim would be bypassed" >&2; exit 1; }
+
 echo "==> Zed ${ZED_VERSION} -> /opt/zed"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT # a failed download must not bake a half-extracted tree into the snapshot
