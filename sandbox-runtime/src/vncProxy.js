@@ -75,7 +75,9 @@ function createVncProxy({ prefix, port: defaultPort, starting }) {
     }
     req.url = p.downstream // proxyHttp forwards req.url as the upstream path
     return proxyHttp(req, res, vncPort, () => {
-      res.writeHead(503, { "content-type": "text/plain" })
+      // charset declared: both `starting` strings carry non-ASCII (an em dash, an ellipsis) and
+      // without it the browser guesses latin-1 and shows mojibake.
+      res.writeHead(503, { "content-type": "text/plain; charset=utf-8" })
       res.end(starting)
     })
   }

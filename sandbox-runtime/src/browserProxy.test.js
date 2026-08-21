@@ -2,7 +2,9 @@
 // contract (zedProxy.test.js owns it). What it pins is what is genuinely browser-specific and would
 // break silently: its own prefix and port, the ?path= injection carrying THAT prefix (a copy-paste
 // of zed's would point the client's WebSocket at the wrong stream), the token gate, and the 503
-// body — which for an on-demand unit has to say "not running", not "starting…".
+// body — which must tell the user what actually starts the browser (the workbench's Browser app or
+// `oyren-open`), never a CLI subcommand that does not exist, and must declare its charset so the
+// em dash in it does not render as mojibake.
 const { test } = require("node:test")
 const assert = require("node:assert/strict")
 const http = require("http")
@@ -57,11 +59,14 @@ test("a wrong or missing token is refused, never proxied", async () => {
   })
 })
 
-test("nothing listening ⇒ 503 that says the browser is not running (it is on-demand)", async () => {
+test("nothing listening ⇒ 503 that says the browser is starting and how to start it", async () => {
   await withFront({ sessionToken: T, browserPort: 1 }, async (port) => {
     const res = await request(port, `${BROWSER_PREFIX}/${T}/index.html`)
     assert.equal(res.status, 503)
-    assert.match(res.body, /not running/)
-    assert.match(res.body, /oyren-open/)
+    assert.match(res.body, /browser starting/)
+    assert.match(res.body, /Browser app/)
+    assert.match(res.body, /oyren-open <url>/)
+    assert.doesNotMatch(res.body, /oyren browser start/) // bin/oyren has no such subcommand
+    assert.equal(res.headers["content-type"], "text/plain; charset=utf-8")
   })
 })
