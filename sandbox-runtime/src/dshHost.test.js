@@ -39,3 +39,12 @@ test("isDshHost is false without a Host header or without a dsh host at all", ()
   // Loopback callers (the oyren CLI, the editor's extension host) never look like the dsh host.
   assert.equal(isDshHost({ headers: { host: "127.0.0.1:8080" } }, "dsh-abc123.sandboxes.oyren.ai"), false)
 })
+
+// Parity with dsh_host() in dsh-web.sh, whose `.* | *. | *..*` guard refuses these: both sides must
+// derive the SAME hostname (or agree there is none), else the router waits on a host nobody registered.
+test("null when the hostname ends with a dot or contains an empty label ('..')", () => {
+  assert.equal(dshHostFromEnv({ OYREN_PUBLIC_ORIGIN: "https://abc." }), null)
+  assert.equal(dshHostFromEnv({ SANDBOX_HOSTNAME: "abc.sandboxes.oyren.ai." }), null)
+  assert.equal(dshHostFromEnv({ OYREN_PUBLIC_ORIGIN: "https://a..b" }), null)
+  assert.equal(dshHostFromEnv({ PUBLIC_URL: "abc..sandboxes.oyren.ai" }), null)
+})

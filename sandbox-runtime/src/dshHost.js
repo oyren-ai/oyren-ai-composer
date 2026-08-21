@@ -8,7 +8,8 @@
 // Read from the same env the session host comes from (OYREN_PUBLIC_ORIGIN, then PUBLIC_URL, then
 // SANDBOX_HOSTNAME — publicOrigin.js's precedence) because that is all the orchestrator delivers.
 // null when none is set (an old orchestrator, local dev), when the host has no edge domain to hang
-// the label off, or when "dsh-" would push the label past DNS's 63-character limit.
+// the label off, when it has an empty label (a trailing dot, ".."), or when "dsh-" would push the
+// label past DNS's 63-character limit — the same guards as dsh_host() in dsh-web.sh.
 const MAX_LABEL = 63
 
 function dshHostFromEnv(env = process.env) {
@@ -21,7 +22,7 @@ function dshHostFromEnv(env = process.env) {
     return null
   }
   const dot = hostname.indexOf(".")
-  if (dot <= 0) return null
+  if (dot <= 0 || hostname.endsWith(".") || hostname.includes("..")) return null
   const label = `dsh-${hostname.slice(0, dot)}`
   if (label.length > MAX_LABEL) return null
   return label + hostname.slice(dot)

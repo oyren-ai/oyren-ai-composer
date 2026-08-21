@@ -37,7 +37,7 @@ assistants="$(
   # instruction here, and both symlinks point at the same binary (see install-agents.sh).
   print_assistant cursor-agent "Cursor CLI (Cursor)"
   # dsh is the one agent you do not simply type: it serves a browser UI rather than a TUI, and
-  # oyren-dsh-web is what starts it AND puts it on this session's public URL (see dsh-web.sh).
+  # oyren-dsh-web is what starts it AND serves it on the Codespace's dsh-<label> hostname (see dsh-web.sh).
   print_assistant dsh          "DeepSeek Harness — run \`oyren-dsh-web\` for its browser UI"
 )"
 
