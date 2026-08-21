@@ -21,9 +21,10 @@ const BROWSER_PORT = Number(process.env.OYREN_BROWSER_PORT || 6091)
 const browser = createVncProxy({
   prefix: BROWSER_PREFIX,
   port: BROWSER_PORT,
-  // Not "starting…" unconditionally: the unit is on-demand (oyren-open / `oyren browser start`),
-  // so the common reason for nothing on 6091 is that nobody has opened the browser yet.
-  starting: "browser not running — start it with `oyren-open <url>` or `oyren browser start`",
+  // The unit is on-demand: opening the Browser app in the workbench starts it, and so does
+  // `oyren-open <url>` from a terminal. Name exactly those two — `bin/oyren` has no `browser`
+  // subcommand, and a hint pointing at one sends the user to an error.
+  starting: "browser starting — open the Browser app in the workbench, or run `oyren-open <url>` in a terminal",
 })
 
 const parseBrowserPath = (rawUrl) => browser.parsePath(rawUrl)

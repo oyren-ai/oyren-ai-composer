@@ -1,19 +1,22 @@
-// The token-gated PTY-over-WebSocket terminal (carried over from repo-terminal). The shell runs
-// inside tmux ("main") so closing the tab only detaches — the session and any running process keep
-// going and a later connection re-attaches. server.js does the SESSION_TOKEN check before upgrading.
-const { WebSocketServer } = require("ws")
-const pty = require("node-pty")
+// The token-gated PTY-over-WebSocket terminal (carried over from repo-terminal). By default the shell
+// runs inside tmux ("main") so closing the tab only detaches — the session and any running process
+// keep going and a later connection re-attaches. A client may ask for a plain login shell instead
+// (`/terminal?tmux=off`, parsed in upgrade.js; the spawn choice lives in terminalSpawn.js).
+// server.js does the SESSION_TOKEN check before upgrading.
+const { spawnTerminal } = require("./terminalSpawn")
 
-/** Build a noServer WebSocketServer wired to spawn a tmux PTY per connection, with keepalive. */
-function setupTerminal(workdir) {
-  const wss = new WebSocketServer({ noServer: true })
+/**
+ * Build a noServer WebSocketServer wired to spawn a PTY per connection, with keepalive. The two
+ * dependencies that cannot load in a unit test — `ws` and node-pty's native build — are looked up
+ * only when the caller does not inject its own, so terminal.test.js can drive the real handler.
+ */
+function setupTerminal(workdir, { spawn, WebSocketServer, env = process.env } = {}) {
+  const Wss = WebSocketServer || require("ws").WebSocketServer
+  const spawnPty = spawn || require("node-pty").spawn
+  const wss = new Wss({ noServer: true })
 
-  wss.on("connection", (ws) => {
-    // `-u` forces tmux UTF-8 mode so multibyte glyphs (Claude Code's ✻/box-drawing/❯) pass through
-    // intact — insurance on top of the image's LANG=C.UTF-8 (Dockerfile).
-    const term = pty.spawn("tmux", ["-u", "new-session", "-A", "-s", "main"], {
-      name: "xterm-256color", cols: 80, rows: 24, cwd: workdir, env: process.env,
-    })
+  wss.on("connection", (ws, _req, { shell = "tmux" } = {}) => {
+    const term = spawnTerminal(spawnPty, { shell, workdir, env })
     term.onData((data) => { try { ws.send(data) } catch {} })
     term.onExit(() => { try { ws.close() } catch {} })
     ws.on("message", (raw) => {
@@ -30,13 +33,16 @@ function setupTerminal(workdir) {
     // process — taking down every other terminal AND the /_oyren/health route, which makes DO recycle
     // the container and wipe /workspace. Handle it so a broken socket only tears down itself.
     ws.on("error", (e) => { console.error("[terminal] socket error:", (e && e.message) || e); try { ws.terminate() } catch {} })
-    ws.on("close", () => { try { term.kill() } catch {} }) // detach the tmux client; the session survives
+    // Detach the tmux client (the session survives); for a plain shell this is the end of the shell.
+    ws.on("close", () => { try { term.kill() } catch {} })
     ws.isAlive = true
     ws.on("pong", () => { ws.isAlive = true })
   })
 
-  // Keepalive ping/pong — survive App Platform's proxy idle timeout; reap dead sockets (the client
-  // self-reconnects + re-attaches the same tmux session, so reaping a stale socket is non-destructive).
+  // Keepalive ping/pong — survive App Platform's proxy idle timeout; reap dead sockets. Under tmux the
+  // reap is non-destructive: the client self-reconnects + re-attaches the same session. For a plain
+  // shell (tmux=off) the reap ends that shell — by design: no persistence is the trade-off the client
+  // chose when it asked for tmux=off.
   const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) { console.warn("[terminal] reaping unresponsive socket"); return ws.terminate() }

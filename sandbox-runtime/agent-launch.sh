@@ -115,7 +115,7 @@ else
       cursor-cli)      agent "${model_args[@]}" ;;
       antigravity-cli) agy "${model_args[@]}" ;;
       # DeepSeek Harness has no TUI: its interactive surface is a web app, so this pane runs the
-      # server (and its logs) while the user works in the browser at the session URL. No model_args —
+      # server (and its logs) while the user works in the browser on the Codespace's dsh hostname. No model_args —
       # `dsh web` has no --model and would refuse to boot on the unknown flag; see dsh-web.sh.
       deepseek-harness) oyren-dsh-web ;;
       *)               echo "Unknown agent '${AGENT_KIND:-}' — opening a shell."; break ;;

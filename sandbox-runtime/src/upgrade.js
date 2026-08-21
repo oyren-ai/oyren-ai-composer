@@ -7,6 +7,8 @@ const { IDE_PORT, ideAuth } = require("./ide")
 const { handlePortProxyUpgrade } = require("./portProxy")
 const { handleZedProxyUpgrade } = require("./zedProxy")
 const { handleBrowserProxyUpgrade } = require("./browserProxy")
+const { DSH_HOST, isDshHost } = require("./dshHost")
+const { handleDshUpgrade } = require("./dshRouter")
 
 // The WS upgrade handler runs outside any request try/catch — a throw here (bad proxy target, parse
 // error) would become an uncaughtException and kill every session. Guard it so one bad upgrade only
@@ -23,6 +25,8 @@ function safeUpgrade(handler) {
 /** The `server.on("upgrade")` handler: terminal PTY, editor WS, port proxy, then the app. */
 function createUpgradeHandler({ termWss, routes, supervisor }) {
   return safeUpgrade((req, socket, head) => {
+    // Host first, as in router.js: on the dsh host every upgrade is one of dsh's own WebSockets.
+    if (isDshHost(req, DSH_HOST)) return handleDshUpgrade(req, socket, head, { sessionToken: cfg.SESSION_TOKEN })
     const route = wsRouteFor(req.url)
     if (route.kind === "terminal") {
       const url = new URL(req.url, "http://localhost")
@@ -30,7 +34,11 @@ function createUpgradeHandler({ termWss, routes, supervisor }) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
         return socket.destroy()
       }
-      return termWss.handleUpgrade(req, socket, head, (ws) => termWss.emit("connection", ws, req))
+      // `tmux=off` asks for a plain login shell instead of the persistent tmux session (terminal.js).
+      // Only that exact value opts out: anything else — absent, "on", a typo — keeps today's tmux, so
+      // every existing client is unaffected and a mistyped knob fails towards the safer default.
+      const shell = url.searchParams.get("tmux") === "off" ? "plain" : "tmux"
+      return termWss.handleUpgrade(req, socket, head, (ws) => termWss.emit("connection", ws, req, { shell }))
     }
     if (route.kind === "ide") {
       // The token is in the PATH here, not the query: openvscode's client builds this URL from its
