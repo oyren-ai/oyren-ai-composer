@@ -67,10 +67,22 @@ test("prefix + m hands the mouse back to the browser, and the status line says s
     tmux("set", "-g", "mouse", "off")
     assert.match(tmux("display", "-p", "#{?mouse,mouse:tmux,mouse:browser}").stdout, /mouse:browser/)
 
-    // The indicator has to actually fit: the stock status-right is already ~35 chars and
-    // status-right-length defaults to 40, which would truncate it away entirely.
+    // The indicator has to actually fit when the bar IS up: the stock status-right is already
+    // ~35 chars and status-right-length defaults to 40, which would truncate it away entirely.
     assert.match(value(tmux, "-g", "status-right"), /mouse:tmux,mouse:browser/)
     assert.ok(Number(value(tmux, "-g", "status-right-length")) >= 80)
+  })
+})
+
+// tmux's stock status line is bg=green,fg=black — a full-width bright green band across the bottom
+// of the pane. In the web terminal it lands directly above the dock and reads as a stray piece of
+// Oyren's own UI, which is exactly what it is not.
+test("the green status band is off, and prefix + T brings it back", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-status", (tmux) => {
+    assert.strictEqual(value(tmux, "-g", "status"), "off")
+    assert.match(tmux("list-keys", "-T", "prefix").stdout, /-T prefix T\s+set-option -g status/)
+    tmux("set", "-g", "status", "on")
+    assert.strictEqual(value(tmux, "-g", "status"), "on")
   })
 })
 
