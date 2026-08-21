@@ -36,12 +36,28 @@ SANDBOX_SRC="$(dirname "$CHROME")/chrome_sandbox"
 [ -f "$SANDBOX_SRC" ] || { echo "ERROR: $SANDBOX_SRC missing — playwright's chromium layout changed" >&2; exit 1; }
 install -m 4755 -o root -g root "$SANDBOX_SRC" "$(dirname "$CHROME")/chrome-sandbox"
 
+# The browser is pinned to English (browserLocale.mjs) by setting LANG/LC_ALL, which glibc only
+# honours for a locale that has actually been generated — Ubuntu's cloud image ships C.UTF-8 and
+# nothing else. Generate it and stop there: /etc/default/locale is NOT touched, so no terminal,
+# agent or editor on the droplet changes language because of this line.
+echo "==> en_US.UTF-8 locale"
+if locale -a 2>/dev/null | grep -qiE '^en_us\.?utf-?8$'; then
+  echo "    already generated"
+elif command -v locale-gen >/dev/null; then
+  locale-gen en_US.UTF-8
+else
+  # Not fatal: with no such locale setlocale falls back to C, whose ICU default is en_US_POSIX —
+  # the browser still comes up in English, which is all this has to guarantee.
+  echo "    WARN: no locale-gen; Chrome will fall back to C (still English)" >&2
+fi
+
 echo "==> launcher + unit"
-# Beside start-zed.mjs: it imports ./sessionEnv.mjs and ./zedStack.mjs by RELATIVE path, which is
-# only correct if all three live in one directory.
+# Beside start-zed.mjs: it imports ./sessionEnv.mjs, ./zedStack.mjs, ./idleWatch.mjs and
+# ./browserLocale.mjs by RELATIVE path, which is only correct if they all live in one directory.
 install -d -m 0755 /usr/local/lib/oyren
 install -m 0755 "$HERE/start-browser.mjs" /usr/local/lib/oyren/start-browser.mjs
 install -m 0644 "$HERE/idleWatch.mjs" /usr/local/lib/oyren/idleWatch.mjs
+install -m 0644 "$HERE/browserLocale.mjs" /usr/local/lib/oyren/browserLocale.mjs
 install -m 0644 "$HERE/../units/oyren-browser.service" /etc/systemd/system/oyren-browser.service
 
 # $BROWSER for every login shell AND every service that reads /etc/profile.d — this is what makes a

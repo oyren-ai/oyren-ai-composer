@@ -17,6 +17,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mergedEnv } from './sessionEnv.mjs'
 import { cleanStaleDisplay, resolveXvncBin, waitForFile } from './zedStack.mjs'
 import { createIdleWatch } from './idleWatch.mjs'
+import { ACCEPT_LANGUAGE_ARG, englishEnv } from './browserLocale.mjs'
 
 const env = mergedEnv()
 
@@ -71,11 +72,13 @@ function resolveChrome() {
   throw new Error(`no Chrome found under ${root} (set OYREN_BROWSER_BIN)`)
 }
 
-const stackEnv = {
+// englishEnv: the whole stack runs in English, never in the locale the session env happened to
+// carry — see browserLocale.mjs for why Chrome on Linux makes that an env problem, not a flag one.
+const stackEnv = englishEnv({
   ...env,
   DISPLAY,
   XDG_RUNTIME_DIR: process.env.RUNTIME_DIRECTORY ?? '/run/oyren-browser',
-}
+})
 delete stackEnv.WAYLAND_DISPLAY
 
 const children = []
@@ -126,6 +129,7 @@ supervise('chrome', resolveChrome(), [
   `--user-data-dir=${PROFILE_DIR}`,
   '--no-first-run', '--no-default-browser-check',
   '--password-store=basic', '--use-mock-keychain',
+  ACCEPT_LANGUAGE_ARG,
   '--window-position=0,0', '--window-size=1600,900',
   START_URL,
 ])
