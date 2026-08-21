@@ -8,10 +8,11 @@ const dot = (up, yes = "listening", no = "not listening") =>
 
 /** What every Codespace serves regardless of routes: `{ name, path, href, up }` rows, where a null
  *  `href` is a surface with no page to open (the terminal is a WebSocket) and a null `up` is one
- *  that was not probed. */
+ *  that was not probed. The links open in a new tab: the app embeds this page in a ~560×384 popover
+ *  iframe, and a full editor or a KasmVNC stream inside that would be unusable. */
 function surfacesCard(surfaces) {
   const rows = surfaces.map((s) => `<tr>
-            <td>${s.href ? `<a href="${escapeHtml(s.href)}">${escapeHtml(s.name)}</a>` : escapeHtml(s.name)}</td>
+            <td>${s.href ? `<a href="${escapeHtml(s.href)}" target="_blank" rel="noopener">${escapeHtml(s.name)}</a>` : escapeHtml(s.name)}</td>
             <td><code>${escapeHtml(s.path)}</code></td>
             <td>${s.up === null ? '<span class="dim">WebSocket</span>' : dot(s.up, "running", "not running")}</td>
           </tr>`).join("")

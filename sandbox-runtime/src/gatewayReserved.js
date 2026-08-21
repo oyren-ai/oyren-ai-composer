@@ -1,6 +1,8 @@
-// The static cards of the gateway page: how an agent adds routes, and every path the runtime
-// reserves for itself. The reserved list mirrors routeFor.js — when a kind is added there, add its
-// row here, or the page will keep telling agents a path is free when it is not.
+// The static cards of the gateway page: how an agent adds routes, and the paths the runtime
+// reserves for itself. The reserved list covers the /_oyren/*, /terminal and /agent/* kinds of
+// routeFor.js — when one of those is added there, add its row here, or the page will keep telling
+// agents a path is free when it is not. Deliberately absent: /how-to-deploy (routeFor's "static"
+// kind), a legacy page pending cleanup — not worth advertising as reserved.
 const { escapeHtml } = require("./pageShell")
 
 const RESERVED = [
