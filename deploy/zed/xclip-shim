@@ -1,0 +1,52 @@
+#!/bin/sh
+# xclip shim — installed to /usr/local/bin/xclip, ahead of the real /usr/bin/xclip on PATH.
+#
+# WHY THIS EXISTS
+# Coding agents read clipboard images on Linux by shelling out to a BARE `xclip`. Claude Code, for
+# one, runs exactly:
+#     xclip -selection clipboard -t TARGETS -o | grep -E "image/(png|jpeg|jpg|gif|webp|bmp)"
+#     xclip -selection clipboard -t image/png -o > <tmpfile>
+# Those inherit the agent's environment. In this sandbox the KasmVNC server that bridges the
+# browser clipboard onto an X selection is always up, but only the Zed process tree gets DISPLAY
+# (start-zed.mjs sets it for its own children). The tmux server backing `main` — the session the
+# web terminal and the editor terminal both attach to — is started without it, so every agent under
+# it has no DISPLAY, xclip fails, and Ctrl+V reports "no image found" with nothing in the logs.
+#
+# WHY A SHIM RATHER THAN EXPORTING DISPLAY
+# There is no single chokepoint to export it from. tmux runs a LOGIN shell when default-command is
+# empty, so /etc/profile.d would cover the plain terminal paths — but `agent-term.sh <agent-id>`
+# execs the launcher as the session command, which bypasses shell startup entirely. Covering every
+# spawn path is whack-a-mole; making `xclip` itself self-sufficient is one place and works for every
+# agent, however it was started.
+#
+# Resolution order: an existing $DISPLAY wins (never override a caller that knows better), then the
+# Zed stack's :90, then any other live socket. Probing matters because a stale /tmp/.X11-unix/X*
+# socket outlives an uncleanly-killed Xvnc, and picking one makes xclip hang rather than fail over.
+set -u
+
+# Absolute path, never a PATH lookup: this script IS `xclip` on PATH, so resolving by name would
+# re-enter the shim and fork-bomb. If the real binary is gone the stack is broken; say so loudly.
+# The two seams below are overridable ONLY so xclipShim.test.mjs can drive this script against a
+# fake xclip and a fake socket dir. Nothing in the image sets them.
+REAL="${XCLIP_SHIM_REAL:-/usr/bin/xclip}"
+X11_DIR="${XCLIP_SHIM_X11_DIR:-/tmp/.X11-unix}"
+[ -x "$REAL" ] || { echo "xclip-shim: real xclip missing at $REAL" >&2; exit 127; }
+
+# Is $1 a display with a server actually answering on it?
+display_live() {
+  DISPLAY="$1" "$REAL" -selection clipboard -t TARGETS -o >/dev/null 2>&1
+}
+
+if [ -z "${DISPLAY:-}" ]; then
+  # :90 is the Zed stack (start-zed.mjs) — the desktop the user is actually looking at, so its
+  # selection is the one holding anything they copied. :91 is the headless browser stack.
+  for cand in :90 $(for s in "$X11_DIR"/X*; do [ -e "$s" ] && printf ':%s ' "${s##*/X}"; done); do
+    if display_live "$cand"; then
+      DISPLAY="$cand"
+      export DISPLAY
+      break
+    fi
+  done
+fi
+
+exec "$REAL" "$@"
