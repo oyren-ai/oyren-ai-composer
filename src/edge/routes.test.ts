@@ -23,6 +23,24 @@ test("isValidUpstream accepts IPv4:port only", () => {
   assert.ok(!isValidUpstream("host.name:80"));
 });
 
+test("isValidUpstream accepts RFC1918 + CGNAT and rejects non-private upstreams", () => {
+  assert.ok(isValidUpstream("10.0.0.1:80"));
+  assert.ok(isValidUpstream("172.16.0.1:80"));
+  assert.ok(isValidUpstream("172.31.255.254:80"));
+  assert.ok(isValidUpstream("192.168.1.1:80"));
+  assert.ok(isValidUpstream("100.64.0.1:80"));
+  assert.ok(isValidUpstream("100.127.255.254:80"));
+  // loopback / link-local / metadata endpoint / multicast / public — SSRF sinks
+  assert.ok(!isValidUpstream("127.0.0.1:80"));
+  assert.ok(!isValidUpstream("127.0.0.2:80"));
+  assert.ok(!isValidUpstream("169.254.169.254:80"));
+  assert.ok(!isValidUpstream("169.254.0.1:80"));
+  assert.ok(!isValidUpstream("224.0.0.1:80"));
+  assert.ok(!isValidUpstream("8.8.8.8:80"));
+  assert.ok(!isValidUpstream("1.2.3.4:80"));
+  assert.ok(!isValidUpstream("192.88.99.1:80"));
+});
+
 test("renderMap emits one 'host upstream' line per route", () => {
   assert.equal(renderMap({}), "");
   assert.equal(

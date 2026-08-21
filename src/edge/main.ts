@@ -57,7 +57,13 @@ async function main(): Promise<void> {
     void save(rest, res, () => res.status(204).end());
   });
 
-  app.listen(edgeEnv.port, () => console.log(`edge admin API on :${edgeEnv.port} (domain=${edgeEnv.domain})`));
+  // Loopback only: Caddy fronts this API on admin.<domain> and reverse_proxies to
+  // 127.0.0.1:<port> (deploy/edge/Caddyfile). Listening on all interfaces would expose the
+  // route-admin API (bearer-gated, but unrate-limited) and the full host→IP map to any VPC
+  // peer — including the SSRF/takeover path via a possibly-leaked or weak token.
+  app.listen(edgeEnv.port, "127.0.0.1", () =>
+    console.log(`edge admin API on 127.0.0.1:${edgeEnv.port} (domain=${edgeEnv.domain})`),
+  );
 }
 
 main().catch((err) => {

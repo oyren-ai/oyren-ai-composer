@@ -2,6 +2,7 @@
 // Also writes output to a log file in .oyren-deliver/ so the workspace can display it.
 // This complements the existing run/run_result flow (which buffers and polls).
 const { spawn } = require("child_process")
+const { appEnv } = require("./appEnv")
 const fs = require("fs")
 const path = require("path")
 const crypto = require("crypto")
@@ -17,7 +18,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
  * @param {string} command - Shell command to run
  * @param {object} opts - { cwd, env, timeoutMs, workdir }
  */
-function runStreaming(res, command, { cwd, env = process.env, timeoutMs = DEFAULT_TIMEOUT_MS, workdir, spawnFn = spawn } = {}) {
+function runStreaming(res, command, { cwd, env = appEnv(), timeoutMs = DEFAULT_TIMEOUT_MS, workdir, spawnFn = spawn } = {}) {
   // Set up SSE headers
   res.writeHead(200, {
     "content-type": "text/event-stream",
@@ -28,7 +29,7 @@ function runStreaming(res, command, { cwd, env = process.env, timeoutMs = DEFAUL
   // Create log file in deliverables folder
   const deliverDir = path.join(workdir || cwd || "/workspace", ".oyren-deliver")
   try { fs.mkdirSync(deliverDir, { recursive: true }) } catch {}
-  const runId = `run-${crypto.randomBytes(4).toString("hex")}`
+  const runId = `run-${crypto.randomBytes(16).toString("hex")}`
   const logPath = path.join(deliverDir, `${runId}.log`)
   const logStream = fs.createWriteStream(logPath, { flags: "a" })
 

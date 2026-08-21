@@ -23,9 +23,11 @@ function serveIndex(res, dir, status = 200) {
 function serveStatic(res, dir, reqPath, status = 200) {
   let rel = reqPath.replace(/^\/how-to-deploy\/?/, "")
   if (rel === "" || rel.endsWith("/")) rel += "index.html"
-  // Block path traversal, then resolve under the static dir.
-  const safe = path.normalize(rel).replace(/^(\.\.(\/|\\|$))+/, "")
-  const full = path.join(dir, safe)
+  // Never serve outside dir: resolve against the static root and require the result
+  // to stay underneath it (rejects `..`, `....//etc`, URL-encoded slashes, etc.).
+  const root = path.resolve(dir)
+  const full = path.resolve(root, rel)
+  if (full !== root && !full.startsWith(root + path.sep)) return serveIndex(res, dir, 404)
   fs.readFile(full, (err, buf) => {
     if (err) return serveIndex(res, dir, 404)
     res.writeHead(status, { "content-type": TYPES[path.extname(full)] || "application/octet-stream" })
