@@ -3,8 +3,9 @@
 #
 # Contains Docker CE (for the AGENT's own builds — the session itself is no longer containerised),
 # the composer checkout at /srv/composer/app, every agent CLI, the session runtime at /app, and the
-# branded Oyren editor. The Lean variant is derived from this image afterwards — see
-# derive-lean-snapshot.sh, and deploy/lean/install-lean.sh for why Mathlib is not baked in here.
+# branded Oyren editor. The Lean image is this SAME provisioning started from the lean-foundation
+# snapshot instead of stock Ubuntu (BASE_IMAGE + VARIANT below; bake-lean-foundation.sh makes the
+# foundation) — see docs/plans/lean-foundation-bake.md for why the layering is that way round.
 #
 # Lives in composer (not deployable-containers) because composer owns everything that runs on the
 # droplet; the container images this replaces are on their way out.
@@ -18,17 +19,27 @@ cd "$(dirname "$0")"
 source ./lib.sh
 
 COMPOSER_DIR="$(cd ../.. && pwd)"
-NAME="oyren-bake-sandbox-$(date +%s)"
-# Name the VARIANT explicitly. There are two images now and they are indistinguishable from a bare
-# date, which is how you end up pointing DROPLET_SNAPSHOT_ID at the Lean one. The UTC HHMM suffix
-# keeps two bakes on the same day from colliding.
-SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-base-$(date -u +%Y-%m-%d-%H%M)}"
+# What the bake droplet boots from, and what the result is called. The defaults make the BASE image
+# from stock Ubuntu; `BASE_IMAGE=<lean-foundation id> VARIANT=lean` runs the SAME provisioning on
+# top of the lean foundation and names the result as the lean image — which is what guarantees the
+# two images differ by exactly deploy/lean/.
+BASE_IMAGE="${BASE_IMAGE:-ubuntu-24-04-x64}"
+VARIANT="${VARIANT:-base}"
+case "$VARIANT" in
+  base|lean) ;;
+  *) echo "ERROR: VARIANT must be 'base' or 'lean', got '$VARIANT'" >&2; exit 1 ;;
+esac
+NAME="oyren-bake-${VARIANT}-$(date +%s)"
+# Name the VARIANT explicitly. The images are indistinguishable from a bare date, which is how you
+# end up pointing DROPLET_SNAPSHOT_ID at the Lean one. The UTC HHMM suffix keeps two bakes on the
+# same day from colliding.
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-${VARIANT}-$(date -u +%Y-%m-%d-%H%M)}"
 
 # Bake on the SMALLEST disk (s-1vcpu-1gb = 25GB): DO refuses to boot an image onto a droplet with a
 # smaller disk than the image was made on, so the bake size sets the MINIMUM session droplet size.
 # Its 1GB of RAM is why the installers raise V8's heap ceiling — see install-agents.sh.
-echo "▶ creating bake droplet $NAME in $DO_REGION"
-DROPLET_ID="$(create_droplet "$NAME" s-1vcpu-1gb ubuntu-24-04-x64 "$DO_SSH_KEY_ID" "$DO_REGION")"
+echo "▶ creating bake droplet $NAME in $DO_REGION from $BASE_IMAGE"
+DROPLET_ID="$(create_droplet "$NAME" s-1vcpu-1gb "$BASE_IMAGE" "$DO_SSH_KEY_ID" "$DO_REGION")"
 # Delete the temp droplet no matter how this ends — a leaked bake droplet bills forever.
 trap 'echo "▶ deleting bake droplet $DROPLET_ID"; delete_droplet "$DROPLET_ID"' EXIT
 
@@ -59,7 +70,10 @@ retry 3 5 ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'cloud-init clean -
 echo "▶ snapshotting as $SNAPSHOT_NAME (powers off first; takes a few minutes)"
 IMAGE_ID="$(snapshot_droplet "$DROPLET_ID" "$SNAPSHOT_NAME")"
 
-echo "✅ base snapshot ready: $SNAPSHOT_NAME (image id: $IMAGE_ID)"
-echo "   Set DROPLET_SNAPSHOT_ID=$IMAGE_ID in the orchestrator."
-echo "   Then: BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-lean-snapshot.sh  for the Lean variant,"
-echo "   or:   BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-zed-snapshot.sh   for the streamed-Zed variant."
+echo "✅ ${VARIANT} snapshot ready: $SNAPSHOT_NAME (image id: $IMAGE_ID)"
+if [ "$VARIANT" = lean ]; then
+  echo "   Set DROPLET_SNAPSHOT_ID_LEAN=$IMAGE_ID in the orchestrator."
+else
+  echo "   Set DROPLET_SNAPSHOT_ID=$IMAGE_ID and DROPLET_SNAPSHOT_ID_ZED=$IMAGE_ID in the orchestrator (zed IS this image)."
+  echo "   Lean: BASE_IMAGE=<lean-foundation id> VARIANT=lean ./bake-base-snapshot.sh  (foundation: ./bake-lean-foundation.sh)."
+fi
