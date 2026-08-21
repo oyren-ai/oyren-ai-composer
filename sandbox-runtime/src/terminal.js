@@ -39,8 +39,10 @@ function setupTerminal(workdir, { spawn, WebSocketServer, env = process.env } = 
     ws.on("pong", () => { ws.isAlive = true })
   })
 
-  // Keepalive ping/pong — survive App Platform's proxy idle timeout; reap dead sockets (the client
-  // self-reconnects + re-attaches the same tmux session, so reaping a stale socket is non-destructive).
+  // Keepalive ping/pong — survive App Platform's proxy idle timeout; reap dead sockets. Under tmux the
+  // reap is non-destructive: the client self-reconnects + re-attaches the same session. For a plain
+  // shell (tmux=off) the reap ends that shell — by design: no persistence is the trade-off the client
+  // chose when it asked for tmux=off.
   const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) { console.warn("[terminal] reaping unresponsive socket"); return ws.terminate() }
