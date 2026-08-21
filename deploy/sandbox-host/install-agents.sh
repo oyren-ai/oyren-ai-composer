@@ -26,6 +26,7 @@ PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-0.0.78}"
 BUN_VERSION="${BUN_VERSION:-bun-v1.3.14}"
 
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
+DSH_DIR="${DSH_DIR:-/opt/oyren-dsh}"
 export PNPM_HOME="${PNPM_HOME:-/usr/local/share/pnpm}"
 export PATH="$PNPM_HOME:$PATH"
 export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -37,12 +38,35 @@ export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # regardless of available memory. Raise the ceiling and let swap absorb anything past physical RAM.
 export NODE_OPTIONS="--max-old-space-size=3072${NODE_OPTIONS:+ $NODE_OPTIONS}"
 
+# Every pnpm-installed agent CLI in ONE `pnpm add -g` pass, not one per package. Each call
+# re-resolves and re-links the whole global set, and on this 1-vCPU droplet that trailing link phase
+# cost 20-45s EVERY time: seven separate calls spent ~275s of the last bake where one pass downloads
+# once and links once. Same pins, same resulting tree.
+#
+# --allow-build is per PACKAGE NAME, and pnpm 10 merges every value into one onlyBuiltDependencies
+# allowlist for the whole install — so the list below is exactly the union of what the separate
+# calls allowed (checked against pnpm 10.33.0: claude's native binary links, and the ignored-build
+# list comes out identical). It is also why dsh is NOT in this pass: see below.
+#
 # HOME=/root keeps pnpm's store and logs out of the sandbox user's home, where they would otherwise
 # land root-owned and break the agent's first write.
-pg() { HOME=/root pnpm add -g --allow-build="$1" "$1@$2"; }
-
-echo "==> claude ${CLAUDE_VERSION}"
-pg @anthropic-ai/claude-code "$CLAUDE_VERSION"
+echo "==> agent CLIs, one pnpm pass: claude ${CLAUDE_VERSION}, codex ${CODEX_VERSION} (+ acp ${CODEX_ACP_VERSION}), gemini ${GEMINI_VERSION}, opencode ${OPENCODE_VERSION}, qwen ${QWEN_VERSION}, antigravity-acp ${ANTIGRAVITY_ACP_VERSION}"
+# Each CLI's own package is allowed to build, exactly what the per-package calls allowed;
+# antigravity-acp keeps no allow-build, as it never had one.
+HOME=/root pnpm add -g \
+  --allow-build=@anthropic-ai/claude-code \
+  --allow-build=@openai/codex \
+  --allow-build=@agentclientprotocol/codex-acp \
+  --allow-build=@google/gemini-cli \
+  --allow-build=opencode-ai \
+  --allow-build=@qwen-code/qwen-code \
+  "@anthropic-ai/claude-code@${CLAUDE_VERSION}" \
+  "@openai/codex@${CODEX_VERSION}" \
+  "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+  "@google/gemini-cli@${GEMINI_VERSION}" \
+  "opencode-ai@${OPENCODE_VERSION}" \
+  "@qwen-code/qwen-code@${QWEN_VERSION}" \
+  "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
 # `claude` is a 500-byte SHIM until the package's postinstall links the platform-native binary
 # (@anthropic-ai/claude-code-linux-x64) into bin/. Without --allow-build above pnpm skips that
 # script and the shim survives the bake, so every session gets a `claude` that only prints
@@ -54,33 +78,36 @@ case "$CLAUDE_SMOKE" in
   *) echo "ERROR: claude does not run after install (native binary not linked?): $CLAUDE_SMOKE" >&2; exit 1 ;;
 esac
 
-echo "==> codex ${CODEX_VERSION} (+ acp ${CODEX_ACP_VERSION})"
-pg @openai/codex "$CODEX_VERSION"
-pg @agentclientprotocol/codex-acp "$CODEX_ACP_VERSION"
-
-echo "==> gemini ${GEMINI_VERSION}"
-pg @google/gemini-cli "$GEMINI_VERSION"
-
-echo "==> opencode ${OPENCODE_VERSION}"
-pg opencode-ai "$OPENCODE_VERSION"
-
-echo "==> qwen ${QWEN_VERSION}"
-pg @qwen-code/qwen-code "$QWEN_VERSION"
-
-# DeepSeek Harness. NPM, not pnpm, and the exception is load-bearing: dsh boots a Cordis plugin tree
-# whose loader resolves every bundle dependency (@deepseek-ai/dsh-settings-file,
-# dsh-credentials-local, …) from ITS OWN directory. Under pnpm's isolated store those are siblings it
-# cannot see, and boot dies with ERR_MODULE_NOT_FOUND on the first bundle — npm's flat global tree
-# resolves them. npm 11 also refuses lifecycle scripts unless they are named: on linux-x64 the ones
-# dsh's native seams declare (node-pty, koffi, the local subprocess/PTY backends) are no-ops today —
-# every one of them ships a prebuilt binary, and an install with and without the flag produced byte-
-# identical trees — but naming them is what keeps a later rc that genuinely needs a build from
-# installing silently half-built. Its published tag IS a developer-preview rc, which is also why the
-# pin matters more here than anywhere else in this file.
-echo "==> deepseek harness ${DSH_VERSION}"
-HOME=/root npm install -g \
-  --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs \
-  "@deepseek-ai/dsh@${DSH_VERSION}"
+# DeepSeek Harness — pnpm as well, but into its OWN project under /opt rather than the global set.
+# The global allowlist is one list for the whole install, and dsh's names node-pty and protobufjs,
+# which CLIs above also depend on with their builds deliberately skipped: a `pnpm add -g` of dsh
+# (in the pass above or after it) quietly gyp-builds claude's node-pty@1.0.0 too — seen in a local
+# run. A private project keeps the two allowlists apart and never re-links the global tree, so this
+# costs dsh's own install and nothing else. The wrapper below is a script, not a symlink: pnpm's
+# .bin shim locates its package relative to $0.
+#
+# It used to be the one npm install in this file, on the belief that pnpm's isolated store broke its
+# Cordis plugin loader (ERR_MODULE_NOT_FOUND on the first bundle). Re-tested 2026-08-21 with this
+# exact pnpm pin: `dsh --version`, `dsh --help` and `dsh --profile web` all boot from a pnpm install,
+# and npm's tree was never flat for it anyway (194 packages nested under dsh/node_modules). On
+# linux-x64 the build scripts its native seams declare (node-pty, koffi, the local subprocess
+# backend, @google/genai, protobufjs) are no-ops today — every one ships a prebuilt binary — but
+# naming them is what keeps a later rc that genuinely needs a build from installing silently
+# half-built. Its published tag IS a developer-preview rc, which is also why the pin matters more
+# here than anywhere else in this file.
+echo "==> deepseek harness ${DSH_VERSION} -> ${DSH_DIR}"
+rm -rf "$DSH_DIR"
+install -d -m 0755 "$DSH_DIR"
+printf '{ "name": "oyren-dsh", "private": true }\n' > "$DSH_DIR/package.json"
+(cd "$DSH_DIR" && HOME=/root pnpm add \
+  --allow-build=@deepseek-ai/dsh-subprocess-local \
+  --allow-build=koffi \
+  --allow-build=node-pty \
+  --allow-build=@google/genai \
+  --allow-build=protobufjs \
+  "@deepseek-ai/dsh@${DSH_VERSION}")
+printf '%s\n' '#!/bin/sh' "exec \"${DSH_DIR}/node_modules/.bin/dsh\" \"\$@\"" > /usr/local/bin/dsh
+chmod 0755 /usr/local/bin/dsh
 # Same reasoning as claude's smoke check above: only running it proves the install is usable — a
 # half-resolved plugin tree still leaves a `dsh` on PATH that dies on its first boot.
 DSH_SMOKE="$(HOME=/root timeout 60 dsh --version 2>&1 || true)"
@@ -112,7 +139,7 @@ fi
 apt-get -o DPkg::Lock::Timeout=300 install -y -qq --no-install-recommends unzip
 curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s -- "$BUN_VERSION"
 apt-get -y -qq purge unzip && apt-get -y -qq autoremove
-HOME=/root pnpm add -g "antigravity-acp@${ANTIGRAVITY_ACP_VERSION}"
+# antigravity-acp itself landed in the pnpm pass above; bun is only what its shim needs at runtime.
 
 # Chromium for claude's playwright MCP. Shared, world-readable, outside any home dir so every agent
 # reuses one copy instead of downloading ~150MB on first use.
