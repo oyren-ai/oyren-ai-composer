@@ -33,16 +33,16 @@ const { handleZedClipboard } = require("./zedClipboard")
 const { STATIC_DIR, SESSION_TOKEN, WORKSPACE_DIR, PORT } = require("./config")
 const { queryTokenOk } = require("./sessionAuth")
 const { IDE_PORT, ideAuth, ideFolderRedirect } = require("./ide")
+const { writeHealth } = require("./health")
+const { DSH_HOST, isDshHost } = require("./dshHost")
+const { handleDshRequest } = require("./dshRouter")
 
 function createRouter({ supervisor, workdir, controlToken, routes }) {
   return function handle(req, res) {
+    // Host first: on the dsh-<label> hostname EVERY path is the DeepSeek UI (dshRouter.js), gated there.
+    if (isDshHost(req, DSH_HOST)) return handleDshRequest(req, res, { sessionToken: SESSION_TOKEN })
     const route = routeFor(req.url)
-    if (route.kind === "health") {
-      res.writeHead(200, { "content-type": "application/json" })
-      // buildId is baked into each image at build time (ARG/ENV BUILD_ID) so a running container reveals
-      // exactly which image it booted — the reliable way to tell a fresh launch from a stale cached one.
-      return res.end(JSON.stringify({ status: "healthy", service: "oyren-sandbox", buildId: process.env.BUILD_ID || "unknown" }))
-    }
+    if (route.kind === "health") return writeHealth(res)
     if (route.kind === "control") return handleControl(req, res, { supervisor, workdir, token: controlToken, routes })
     if (route.kind === "agent") return handleAgentMessage(req, res)
     if (route.kind === "agent-stream") return handleAgentStream(req, res)
