@@ -4,6 +4,7 @@
 // (`/terminal?tmux=off`, parsed in upgrade.js; the spawn choice lives in terminalSpawn.js).
 // server.js does the SESSION_TOKEN check before upgrading.
 const { spawnTerminal } = require("./terminalSpawn")
+const { writePastedImage } = require("./terminalImagePaste")
 
 /**
  * Build a noServer WebSocketServer wired to spawn a PTY per connection, with keepalive. The two
@@ -27,6 +28,8 @@ function setupTerminal(workdir, { spawn, WebSocketServer, env = process.env } = 
       try {
         if (msg.type === "input") term.write(msg.data)
         else if (msg.type === "resize") term.resize(Number(msg.cols) || 80, Number(msg.rows) || 24)
+        // A pasted image: write it to a container file and type its path onto the PTY (terminalImagePaste).
+        else if (msg.type === "image") writePastedImage(term, msg)
       } catch {}
     })
     // A socket-level error (reset/abort) emits 'error'; with no listener `ws` rethrows and crashes the
