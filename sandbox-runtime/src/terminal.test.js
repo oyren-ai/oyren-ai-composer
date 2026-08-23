@@ -96,3 +96,15 @@ test("input/resize reach the PTY, its exit closes the socket, the socket closing
     })
   }
 })
+
+test("a pasted image message writes a file and types its path onto the PTY, under tmux and plain alike", () => {
+  for (const shell of ["tmux", "plain"]) {
+    connect({ shell }, ({ ws, term }) => {
+      const data = Buffer.from("png-bytes").toString("base64")
+      ws.emit("message", Buffer.from(JSON.stringify({ type: "image", data, mime: "image/png" })))
+      // The one write is the injected path — a single token ending in the paste dir + a trailing space.
+      assert.equal(term.writes.length, 1, shell)
+      assert.match(term.writes[0], /oyren-terminal-pastes[/\\]paste-\d+-\d+\.png $/, shell)
+    })
+  }
+})
