@@ -10,7 +10,8 @@ to it) and dispatches by path:
 | Path | Handler | Auth |
 |------|---------|------|
 | `GET /_oyren/health` | always `200` (DO health check) — **never proxied** | none |
-| `POST /_oyren/control/{expose,start,restart,stop,status}` | app supervisor control | `CONTROL_TOKEN` |
+| `POST /_oyren/control/{expose,start,restart,stop,status}` | app supervisor control (`status` also carries the image summary) | `CONTROL_TOKEN` |
+| `GET /_oyren/control/{image,update/status}` | the image manifest; where an in-place update stands | `CONTROL_TOKEN` |
 | `WS /terminal?token=…` | tmux PTY over WebSocket | `SESSION_TOKEN` |
 | `GET /how-to-deploy[/…]` | static three.js page explaining how to deploy | none |
 | everything else | reverse-proxy to the user's app on the exposed port (HTTP + WS); else the how-to-deploy page | n/a |
@@ -32,6 +33,20 @@ oyren restart       # restart the managed app   ·   oyren status   # check it
 `runner/oyren-resolve.mjs`). Manual mode is also fine: run your app yourself in the terminal, then
 `oyren expose <port>` to point the public URL at it. Your app must bind `0.0.0.0:$PORT`
 (or the port you expose).
+
+## Updating the machine
+
+```bash
+oyren version          # which Oyren image this machine runs (/etc/oyren/image-manifest.json)
+oyren update --check   # what a newer image would change, one line per component (exit 3 = something)
+oyren update           # apply it in place: only the changed components; shells and the agent survive
+oyren update --status  # follow the last update
+```
+
+`oyren update` asks the orchestrator (`POST /sandbox/release`) for the newest release of this
+image's family and hands the presigned URLs to the root-side updater (`deploy/update/`), which
+runs in its own systemd unit and reports back over `/sandbox/update-result`. `oyren quiesce` is
+what runs before the disk is snapshotted at session end. See `docs/sandbox-updates.md`.
 
 ## Environment variables
 
