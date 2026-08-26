@@ -33,6 +33,11 @@ install_runtime_helpers() {
   # and the wrapper is what injects the session's short-lived GitHub token.
   install -m 0755 "$app/gh-wrapper.sh" /usr/local/bin/gh
   ln -sf /usr/local/bin/oyren-welcome /usr/local/bin/oyren-help
+  # The in-place updater and the pre-snapshot quiesce, as shims into the installed composer tree
+  # (which an update swaps, so the shim always runs the current version's script).
+  printf '%s\n' '#!/bin/sh' 'exec bash /srv/composer/app/deploy/update/oyren-update.sh "$@"' > /usr/local/bin/oyren-update
+  printf '%s\n' '#!/bin/sh' 'exec bash /srv/composer/app/deploy/update/oyren-quiesce.sh "$@"' > /usr/local/bin/oyren-quiesce
+  chmod 0755 /usr/local/bin/oyren-update /usr/local/bin/oyren-quiesce
   install -m 0644 "$app/tmux.conf" /etc/tmux.conf
   chmod +x "$app/entrypoint.sh" "$app/agent-launch.sh" "$app/agent-term.sh" "$app/dsh-web.sh"
 }
@@ -48,8 +53,12 @@ install_runtime_units() {
   install -m 0644 "$here/editorSurface.mjs" /usr/local/lib/oyren/editorSurface.mjs
   install -m 0755 "$here/start-sandbox.mjs" /usr/local/lib/oyren/start-sandbox.mjs
   install -m 0755 "$here/start-editor.mjs" /usr/local/lib/oyren/start-editor.mjs
+  install -m 0755 "$here/start-tmux.mjs" /usr/local/lib/oyren/start-tmux.mjs
   install -m 0644 "$here/../units/oyren-sandbox.service" /etc/systemd/system/oyren-sandbox.service
   install -m 0644 "$here/../units/oyren-editor.service" /etc/systemd/system/oyren-editor.service
+  # The tmux server's unit, pulled in by the drop-in so a runtime restart never kills the shells.
+  install -m 0644 "$here/../units/oyren-tmux.service" /etc/systemd/system/oyren-tmux.service
+  install -D -m 0644 "$here/../units/oyren-sandbox.service.d/20-tmux.conf" /etc/systemd/system/oyren-sandbox.service.d/20-tmux.conf
   # The welcome banner on interactive shells (guarded so a re-run doesn't append it twice).
   if ! grep -q OYREN_WELCOMED /etc/bash.bashrc 2>/dev/null; then
     printf '%s\n' 'if [ -n "$PS1" ] && [ -z "${OYREN_WELCOMED:-}" ]; then export OYREN_WELCOMED=1; oyren-welcome; fi' \
