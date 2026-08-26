@@ -5,7 +5,10 @@
 # install_runtime_helpers <app> — the runtime's helper commands on PATH, plus tmux.conf.
 install_runtime_helpers() {
   local app="$1"
-  install -m 0755 "$app/bin/oyren" /usr/local/bin/oyren
+  # `oyren` is a shim into the ACTIVE runtime (through the /app symlink), not a copy of bin/oyren:
+  # its commands live in src/cli/, and a runtime update must not leave a stale CLI on PATH.
+  printf '%s\n' '#!/usr/bin/env node' 'require("/app/src/cli/main.js")' > /usr/local/bin/oyren
+  chmod 0755 /usr/local/bin/oyren
   # $BROWSER for every shell (deploy/browser/install-browser.sh writes the profile.d line that
   # points at it): opens a URL in the sandbox's own browser, the only browser whose localhost is
   # this machine — see bin/oyren-open.

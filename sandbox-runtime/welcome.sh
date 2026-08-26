@@ -62,6 +62,7 @@ cat <<EOF
     ${YL}oyren expose <port>${X}  point the public URL at your app (writes oyren.yml)
     ${YL}oyren start${X}          run your app via the oyren manifest (managed)
     ${YL}oyren restart${X}        restart it   ${YL}oyren status${X}  check it
+    ${YL}oyren update --check${X}  see if a newer Oyren image is available (${YL}oyren update${X} applies it in place)
 
   ${D}Your app must bind 0.0.0.0:\$PORT (or the port you expose).
   This terminal runs inside tmux, so your work keeps running if you disconnect —

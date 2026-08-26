@@ -289,3 +289,25 @@ test("`image` is a 404 on an image that predates manifests, and status still ans
     delete process.env.OYREN_IMAGE_MANIFEST
   }
 })
+
+test("update/status pairs the image with the updater's status file, null when none ran", async () => {
+  const dir = tmp()
+  fs.writeFileSync(path.join(dir, "image-manifest.json"), JSON.stringify({ version: "2026-08-20-1410", family: "base", components: { runtime: "t-1" } }))
+  fs.writeFileSync(path.join(dir, "update-status.json"), JSON.stringify({ state: "running", step: "applying:claude", from: "2026-08-20-1410", to: "2026-08-25-1838" }))
+  process.env.OYREN_IMAGE_MANIFEST = path.join(dir, "image-manifest.json")
+  process.env.OYREN_UPDATE_STATUS = path.join(dir, "update-status.json")
+  try {
+    const res = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/update/status", headers: auth }), res, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.json().image.version, "2026-08-20-1410")
+    assert.equal(res.json().update.step, "applying:claude")
+    process.env.OYREN_UPDATE_STATUS = path.join(dir, "missing.json")
+    const none = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/update/status", headers: auth }), none, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(none.json().update, null)
+  } finally {
+    delete process.env.OYREN_IMAGE_MANIFEST
+    delete process.env.OYREN_UPDATE_STATUS
+  }
+})

@@ -13,6 +13,7 @@ const { runStreaming, listRunLogs, readRunLog } = require("./runStream")
 const { routeAction } = require("./controlRoutes")
 const { switchSurface, surfaceStatus } = require("./editorSurface")
 const { imageSummary, readImageManifest } = require("./imageManifest")
+const { updateStatus } = require("./controlUpdate")
 const { jobs: defaultJobs } = require("./sharedJobs") // one process-wide registry, shared with runs.js
 
 function tokenOk(req, expected) {
@@ -62,6 +63,9 @@ async function handleControl(req, res, { supervisor, workdir, token, routes, run
     const manifest = readImageManifest()
     return manifest ? send(res, 200, manifest) : send(res, 404, { error: "no image manifest: this image predates manifests" })
   }
+  // Where an in-place update stands (deploy/update/ writes the file). Read from disk, not from a
+  // job: the runtime itself restarts half-way through an update and a job id would be `unknown`.
+  if (action === "update/status") return send(res, 200, updateStatus())
 
   // Editor surface: which of the two editors this session is showing (streamed Zed / in-browser VS
   // Code). One image now carries both, so switching is a systemd start+stop rather than a relaunch
