@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SCRIPT = readFileSync(join(HERE, "install-agents.sh"), "utf8")
+const SCRIPT = readFileSync(join(HERE, "agents", "profile.sh"), "utf8")
 
 /** The heredoc this script writes to /etc/profile.d/20-oyren-agents.sh — i.e. exactly what a login
  *  shell in a session ends up with. Extracted rather than executed: running the installer would
