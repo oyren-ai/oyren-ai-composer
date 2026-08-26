@@ -88,7 +88,7 @@ This Codespace runs image <installed version>; the latest is <latest version>. P
   not by a machine, and authenticated with `Authorization: Bearer <IMAGE_REGISTRY_TOKEN>` rather than
   a session control token. 201 created, 200 already registered with the same image id, 409 that
   version claimed by a different one, 400 anything DigitalOcean does not confirm (the orchestrator
-  re-reads the image's name, type and regions before storing it), 503 no token configured.
+  re-reads the image's name, type and regions before storing it), 501 no token configured.
 - Update step vocabulary: `starting`, `fetching`, `verifying`, `applying:<component>`, `restarting`,
   `done`. The session's status stays `active` throughout.
 - The orchestrator's own trigger runs `oyren update --yes --no-wait --json` through the control API
