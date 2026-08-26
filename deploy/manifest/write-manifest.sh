@@ -33,7 +33,7 @@ LEAN="none"
 [ "$FAMILY" = "lean" ] && LEAN="$(tr -d '[:space:]' < deploy/lean/template/lean-toolchain)"
 
 install -d -m 0755 "$(dirname "$OUT")"
-node "$HERE/manifest.mjs" build \
+node "$HERE/manifestCli.mjs" build \
   --version "$VERSION" --family "$FAMILY" --composer-sha "$COMPOSER_SHA" \
   --versions-file deploy/versions.env \
   --hash "runtime=$RUNTIME_HASH" --hash "host=$HOST_HASH" --hash "browser=$BROWSER_HASH" \
