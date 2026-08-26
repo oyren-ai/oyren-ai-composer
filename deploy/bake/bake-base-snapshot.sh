@@ -65,6 +65,5 @@ echo "▶ snapshotting as $SNAPSHOT_NAME (powers off first; takes a few minutes)
 IMAGE_ID="$(snapshot_droplet "$DROPLET_ID" "$SNAPSHOT_NAME")"
 
 echo "✅ base snapshot ready: $SNAPSHOT_NAME (image id: $IMAGE_ID)"
-echo "   Set DROPLET_SNAPSHOT_ID=$IMAGE_ID in the orchestrator."
-echo "   Then: BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-lean-snapshot.sh  for the Lean variant,"
-echo "   or:   BASE_SNAPSHOT_ID=$IMAGE_ID ./derive-zed-snapshot.sh   for the streamed-Zed variant."
+echo "   Promote it (smoke boot + rename) with: IMAGE_ID=$IMAGE_ID FAMILY=base RELEASE_VERSION=$RELEASE_VERSION ./promote-snapshot.sh"
+echo "   Then: BASE_SNAPSHOT_ID=$IMAGE_ID RELEASE_VERSION=$RELEASE_VERSION ./derive-lean-snapshot.sh  for the Lean variant."
