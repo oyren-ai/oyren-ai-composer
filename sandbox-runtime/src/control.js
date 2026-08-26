@@ -12,6 +12,8 @@ const { runAction, runResultAction } = require("./controlRun")
 const { runStreaming, listRunLogs, readRunLog } = require("./runStream")
 const { routeAction } = require("./controlRoutes")
 const { switchSurface, surfaceStatus } = require("./editorSurface")
+const { imageSummary, readImageManifest } = require("./imageManifest")
+const { updateStatus } = require("./controlUpdate")
 const { jobs: defaultJobs } = require("./sharedJobs") // one process-wide registry, shared with runs.js
 
 function tokenOk(req, expected) {
@@ -53,8 +55,17 @@ async function handleControl(req, res, { supervisor, workdir, token, routes, run
     return send(res, s.managed ? 200 : 409, s)
   }
   if (action === "stop") return send(res, 200, await supervisor.stop())
-  if (action === "status") return send(res, 200, await supervisor.status())
+  // `image` rides on status so the orchestrator learns which bake a droplet runs from the poll it
+  // already makes; the full manifest is its own GET-able action for `oyren update` and support.
+  if (action === "status") return send(res, 200, { ...(await supervisor.status()), image: imageSummary() })
   if (action === "stats") return send(res, 200, await readContainerStats({ workdir }))
+  if (action === "image") {
+    const manifest = readImageManifest()
+    return manifest ? send(res, 200, manifest) : send(res, 404, { error: "no image manifest: this image predates manifests" })
+  }
+  // Where an in-place update stands (deploy/update/ writes the file). Read from disk, not from a
+  // job: the runtime itself restarts half-way through an update and a job id would be `unknown`.
+  if (action === "update/status") return send(res, 200, updateStatus())
 
   // Editor surface: which of the two editors this session is showing (streamed Zed / in-browser VS
   // Code). One image now carries both, so switching is a systemd start+stop rather than a relaunch

@@ -12,10 +12,12 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-PNPM_VERSION="${PNPM_VERSION:-10.33.0}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# PNPM_VERSION (and every other pin) comes from deploy/versions.env; an exported value still wins.
+source "$HERE/../lib/versions.sh"
+load_versions
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
 PNPM_HOME="${PNPM_HOME:-/usr/local/share/pnpm}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APT="apt-get -o DPkg::Lock::Timeout=300"
 
 echo "==> Base packages"
@@ -46,37 +48,10 @@ mkdir -p "$PNPM_HOME"
 corepack enable
 corepack prepare "pnpm@${PNPM_VERSION}" --activate
 
-# The container set these as ENV layers. On a VM they have to reach BOTH interactive shells (the
-# user's terminal, the agent's tmux session) and the systemd units, hence two files.
+# The container set these as ENV layers; on a VM they live in two files (host-env.sh).
 echo "==> Shell + service environment"
-cat > /etc/profile.d/10-oyren-path.sh <<EOF
-export PATH="${PNPM_HOME}:/app/node_modules/.bin:\$PATH"
-export PNPM_HOME="${PNPM_HOME}"
-export LANG=C.UTF-8
-export LC_ALL=C.UTF-8
-EOF
-chmod 0644 /etc/profile.d/10-oyren-path.sh
-
-mkdir -p /etc/oyren
-cat > /etc/oyren/host.env <<EOF
-PATH=${PNPM_HOME}:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-PNPM_HOME=${PNPM_HOME}
-LANG=C.UTF-8
-LC_ALL=C.UTF-8
-# npm/pnpm on a small droplet hit flaky registry TLS; the container tuned these the same way.
-npm_config_fetch_retries=6
-npm_config_fetch_retry_mintimeout=10000
-npm_config_fetch_retry_maxtimeout=600000
-npm_config_fetch_timeout=600000
-# Kill switch for the native Chat panel's claude wrapper+broker, v2: turn-completion survival — a
-# closed panel's kill only drops the wrapper's relay socket, and the broker-owned claude child
-# finishes its in-flight turn and flushes the transcript for --resume (no live reattach). The flag
-# alone changes nothing: the wrapper lands unconditionally (install-runtime.sh) but stays inert
-# until the editor's claudeCode.claudeProcessWrapper machine setting points at it, and that setting
-# ships separately, gated on a live end-to-end pass.
-OYREN_CLAUDE_WRAPPER=1
-EOF
-chmod 0644 /etc/oyren/host.env
+source "$HERE/host-env.sh"
+write_host_env "$PNPM_HOME"
 
 echo "==> ${SANDBOX_USER} user"
 if ! getent passwd "$SANDBOX_USER" >/dev/null; then
@@ -96,5 +71,11 @@ git config --system user.email "sandbox@oyren.ai"
 git config --system credential.helper oyren
 git config --system credential.https://github.com.useHttpPath true
 git config --system --add safe.directory '*'
+
+# Stamp what this script owns into the image manifest (deploy/manifest/): the pnpm pin and the
+# node major that is actually on the box. The `host` tree hash is written by write-manifest.sh at
+# the end of the bake, from the same files a release hashes.
+"$HERE/../manifest/stamp.sh" pnpm "$PNPM_VERSION"
+"$HERE/../manifest/stamp.sh" node "$(node -p 'process.versions.node.split(".")[0]')"
 
 echo "✅ sandbox host provisioned (user=${SANDBOX_USER}, pnpm=${PNPM_VERSION})"

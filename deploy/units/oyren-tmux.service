@@ -1,0 +1,33 @@
+# The session's tmux server, in its own unit.
+#
+# Every shell a user opens and the agent's own pane live inside one tmux server. It used to be
+# born inside oyren-sandbox.service (entrypoint.sh created the agent session, or the first web
+# terminal did), so a restart of that unit — an in-place update, a crash-restart — killed the
+# whole cgroup: every shell, the running agent mid-turn, the dev server they had started. Owning
+# the server here means the runtime can restart freely and the web terminal simply re-attaches
+# (`tmux new-session -A -s main`, terminalSpawn.js) to processes that never stopped.
+#
+# Pulled in by Wants= from oyren-sandbox.service (the 20-tmux.conf drop-in), never enabled on its
+# own, for the same reason as the editor: enabling at multi-user.target would race cloud-init's
+# write_files on /etc/oyren/sandbox.env. `-D` keeps the server in the foreground for systemd and
+# turns exit-empty off, so a server with no sessions stays up for the next attach.
+#
+# KillMode is the default control-group on purpose: stopping THIS unit (session end, quiesce) is
+# exactly when every shell should die. Nothing else ever restarts it — lib/restart.sh skips it.
+[Unit]
+Description=Oyren tmux server (the session's shells and agent)
+After=network-online.target
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+# host.env is baked (PATH, PNPM_HOME, locale); sandbox.env is per-session from cloud-init and
+# carries CONTAINER_ENV_B64, which the launcher decodes so every pane inherits the session env.
+EnvironmentFile=/etc/oyren/host.env
+EnvironmentFile=/etc/oyren/sandbox.env
+ExecStart=/usr/bin/node /usr/local/lib/oyren/start-tmux.mjs
+
+User=oyren
+WorkingDirectory=/workspace
+
+Restart=on-failure
+RestartSec=2

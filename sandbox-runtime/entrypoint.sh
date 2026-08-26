@@ -65,9 +65,24 @@ if [ -n "$REPO_DIR" ] && [ -d "$REPO_DIR" ]; then
   export WORKING_DIR="${WORKING_DIR:-$REPO_DIR}"
 fi
 
+# The tmux server lives in its own unit (oyren-tmux.service) so a restart of THIS unit — an in-place
+# update, a crash-restart — keeps every shell and the running agent; the web terminal re-attaches.
+# Wait for its socket, then hand it the values only this script knows (computed after the clone),
+# which new panes inherit from the server. An image without the unit still gets a server the old
+# way, inside this cgroup, from the first `tmux new-session` below or in terminalSpawn.js.
+if systemctl is-active --quiet oyren-tmux 2>/dev/null; then
+  _sock="/tmp/tmux-$(id -u)/default"
+  for _i in $(seq 1 25); do [ -S "$_sock" ] && break; sleep 0.2; done
+  tmux set-environment -g WORKDIR "${WORKDIR:-$WORKSPACE}" 2>/dev/null || true
+  tmux set-environment -g WORKING_DIR "${WORKING_DIR:-$WORKSPACE}" 2>/dev/null || true
+  tmux set-environment -g NODE_OPTIONS "$NODE_OPTIONS" 2>/dev/null || true
+fi
+
 # Agent launch: when the orchestrator requested a CLI agent, pre-create the tmux "main" session running
 # it now. server.js's `tmux new-session -A -s main` then *attaches* to it, so the browser lands on the
 # already-running agent. Absent AGENT_KIND ⇒ no pre-create ⇒ server.js makes a plain shell (unchanged).
+# After a runtime restart the session already exists (it outlived us in oyren-tmux.service), and
+# `new-session -d -s main` fails on the duplicate name, which the `|| true` was already absorbing.
 if [ -n "${AGENT_KIND:-}" ]; then
   mkdir -p "${WORKING_DIR:-$WORKSPACE}" # never let a not-yet-existing start dir silently skip the launch
   tmux -u new-session -d -s main -c "${WORKING_DIR:-$WORKSPACE}" "/app/agent-launch.sh" || true

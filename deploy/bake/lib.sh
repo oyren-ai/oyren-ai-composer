@@ -100,12 +100,16 @@ retry() {
   done
 }
 
-# run_remote <ip> <script-path> — stream a local script into `bash -s` as root on the droplet
-# (nothing is copied to its disk).
+# run_remote <ip> <script-path> [VAR=value…] — stream a local script into `bash -s` as root on the
+# droplet (nothing is copied to its disk). Extra VAR=value arguments reach the script's environment:
+# `bash -s` inherits nothing from the runner, and the bake stamps RELEASE_VERSION / COMPOSER_SHA
+# into the image manifest this way.
 run_remote() {
-  local ip="$1" script="$2"
+  local ip="$1" script="$2" assignments=""
+  shift 2
+  [ $# -gt 0 ] && assignments="$(printf '%q ' "$@")"
   wait_ssh "$ip"
-  ssh -o StrictHostKeyChecking=accept-new "root@$ip" 'bash -s' < "$script"
+  ssh -o StrictHostKeyChecking=accept-new "root@$ip" "env ${assignments}bash -s" < "$script"
 }
 
 # snapshot_droplet <id> <name> — power off first (snapshotting a running disk risks an
