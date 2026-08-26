@@ -12,10 +12,12 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-PNPM_VERSION="${PNPM_VERSION:-10.33.0}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# PNPM_VERSION (and every other pin) comes from deploy/versions.env; an exported value still wins.
+source "$HERE/../lib/versions.sh"
+load_versions
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
 PNPM_HOME="${PNPM_HOME:-/usr/local/share/pnpm}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APT="apt-get -o DPkg::Lock::Timeout=300"
 
 echo "==> Base packages"
@@ -96,5 +98,11 @@ git config --system user.email "sandbox@oyren.ai"
 git config --system credential.helper oyren
 git config --system credential.https://github.com.useHttpPath true
 git config --system --add safe.directory '*'
+
+# Stamp what this script owns into the image manifest (deploy/manifest/): the pnpm pin and the
+# node major that is actually on the box. The `host` tree hash is written by write-manifest.sh at
+# the end of the bake, from the same files a release hashes.
+"$HERE/../manifest/stamp.sh" pnpm "$PNPM_VERSION"
+"$HERE/../manifest/stamp.sh" node "$(node -p 'process.versions.node.split(".")[0]')"
 
 echo "✅ sandbox host provisioned (user=${SANDBOX_USER}, pnpm=${PNPM_VERSION})"

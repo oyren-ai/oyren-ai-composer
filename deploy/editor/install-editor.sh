@@ -26,10 +26,12 @@
 #   INSTALL_QWEN_EXTENSION   1 (default) installs qwenlm.qwen-code-vscode-ide-companion from Open VSX
 set -euo pipefail
 
-OPENVSCODE_VERSION="${OPENVSCODE_VERSION:-1.109.5-oyren.3}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# OPENVSCODE_VERSION comes from deploy/versions.env; an exported value still wins.
+source "$HERE/../lib/versions.sh"
+load_versions
 EDITOR_USER="${EDITOR_USER:-oyren}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/openvscode-server}"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # An "-oyren." version comes from our fork's releases, anything else from gitpod's — the fork carries
 # the chat patches (a stock build's Chat view intercepts every turn with a Copilot setup agent that
@@ -87,5 +89,10 @@ EDITOR_USER="$EDITOR_USER" INSTALL_DIR="$INSTALL_DIR" "$HERE/install-marketplace
 # Oyren's own first-party extensions — kept in their own script because this one installs a VENDOR
 # server and that is a different job with a different failure mode.
 EDITOR_USER="$EDITOR_USER" INSTALL_DIR="$INSTALL_DIR" EXTRAS_DIR="$EXTRAS_DIR" "$HERE/install-oyren-extensions.sh"
+
+# Into the image manifest. Informational for live updates: the editor's own channel is the extras
+# release (oyren-editor-update swaps the server whenever its server-version moves), so a manifest
+# diff on `editor` means "run that updater", never a second swap path.
+"$HERE/../manifest/stamp.sh" editor "$OPENVSCODE_VERSION"
 
 echo "✅ Oyren Editor installed (openvscode-server v${OPENVSCODE_VERSION}, user=${EDITOR_USER})"

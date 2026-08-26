@@ -8,22 +8,16 @@
 #
 # Versions are PINNED, exactly as the per-agent Dockerfiles pinned them. Agent CLIs ship breaking
 # changes often and a floating tag turns a re-bake into a silent upgrade of every future sandbox.
-# Bump deliberately, one at a time, and re-bake.
+# Bump deliberately, one at a time, and re-bake. The pins live in deploy/versions.env, one file for
+# every installer and for the image manifest; an exported variable of the same name still wins.
 #
 # Idempotent: safe to re-run. Runs as root during the snapshot bake.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-
-CLAUDE_VERSION="${CLAUDE_VERSION:-2.1.235}"
-CODEX_VERSION="${CODEX_VERSION:-0.142.0}"
-CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-1.1.2}"
-GEMINI_VERSION="${GEMINI_VERSION:-0.50.0}"
-OPENCODE_VERSION="${OPENCODE_VERSION:-1.17.18}"
-QWEN_VERSION="${QWEN_VERSION:-0.19.9}"
-DSH_VERSION="${DSH_VERSION:-0.1.0-rc.7}"
-ANTIGRAVITY_ACP_VERSION="${ANTIGRAVITY_ACP_VERSION:-1.0.0}"
-PLAYWRIGHT_MCP_VERSION="${PLAYWRIGHT_MCP_VERSION:-0.0.78}"
-BUN_VERSION="${BUN_VERSION:-bun-v1.3.14}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$HERE/../lib/versions.sh"
+load_versions
+STAMP="$HERE/../manifest/stamp.sh"
 
 SANDBOX_USER="${SANDBOX_USER:-oyren}"
 DSH_DIR="${DSH_DIR:-/opt/oyren-dsh}"
@@ -194,5 +188,19 @@ chmod 0644 /etc/profile.d/20-oyren-agents.sh
 rm -rf /var/lib/apt/lists/* "/home/$SANDBOX_USER/.npm"
 install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "/home/$SANDBOX_USER/.cache"
 chown -R "$SANDBOX_USER:$SANDBOX_USER" "$PNPM_HOME"
+
+# Stamp every pinned CLI into the image manifest (deploy/manifest/), one component each, so a live
+# update that bumps a single pin can re-run just that install and record just that change. cursor
+# and agy have no pin (vendor installers) and are deliberately not components.
+"$STAMP" claude "$CLAUDE_VERSION"
+"$STAMP" codex "$CODEX_VERSION"
+"$STAMP" codexAcp "$CODEX_ACP_VERSION"
+"$STAMP" gemini "$GEMINI_VERSION"
+"$STAMP" opencode "$OPENCODE_VERSION"
+"$STAMP" qwen "$QWEN_VERSION"
+"$STAMP" dsh "$DSH_VERSION"
+"$STAMP" antigravityAcp "$ANTIGRAVITY_ACP_VERSION"
+"$STAMP" playwrightMcp "$PLAYWRIGHT_MCP_VERSION"
+"$STAMP" bun "$BUN_VERSION"
 
 echo "✅ agent CLIs installed (claude codex gemini cursor opencode qwen antigravity deepseek-harness)"

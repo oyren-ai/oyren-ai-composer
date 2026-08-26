@@ -14,8 +14,11 @@ source ./lib.sh
 : "${BASE_SNAPSHOT_ID:?must be set — the image id printed by the base bake}"
 
 NAME="oyren-derive-lean-$(date +%s)"
-# Mirrors bake-base-snapshot.sh: variant in the name, UTC HHMM so same-day runs don't collide.
-SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-lean-$(date -u +%Y-%m-%d-%H%M)}"
+# Mirrors bake-base-snapshot.sh: variant in the name, and the SAME version stamp as the base this
+# derives from when the workflow passes one (one bake run, one version across both images).
+RELEASE_VERSION="${RELEASE_VERSION:-$(date -u +%Y-%m-%d-%H%M)}"
+COMPOSER_SHA="${COMPOSER_SHA:-$(git -C ../.. rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-lean-$RELEASE_VERSION}"
 
 # DISK SIZE IS THE CONSTRAINT, NOT CPU. DigitalOcean refuses to boot an image onto a droplet whose
 # disk is smaller than the one the image was made on, so the size used HERE sets the minimum size of
@@ -46,9 +49,17 @@ echo "▶ droplet $DROPLET_ID active at $IP"
 echo "▶ syncing lean assets"
 ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'mkdir -p /srv/composer/app/deploy/lean'
 rsync -az --delete ../lean/ "root@$IP:/srv/composer/app/deploy/lean/"
+# The manifest tooling and the pins too, so a derive off an older base still stamps correctly.
+rsync -az ../lib ../manifest ../versions.env "root@$IP:/srv/composer/app/deploy/"
 
 echo "▶ installing Lean + Mathlib (several minutes)"
 ssh -o StrictHostKeyChecking=accept-new "root@$IP" 'bash /srv/composer/app/deploy/lean/install-lean.sh'
+
+# The lean image gets its own manifest: the base's version stamp, family lean, and the toolchain
+# recorded as the `lean` component. A base without the manifest tooling predates image manifests.
+echo "▶ writing the lean image manifest"
+ssh -o StrictHostKeyChecking=accept-new "root@$IP" \
+  "bash /srv/composer/app/deploy/manifest/write-manifest.sh --version '$RELEASE_VERSION' --family lean --composer-sha '$COMPOSER_SHA' --root /srv/composer/app"
 
 # Same reason as the base bake: without this, droplets from the snapshot think cloud-init already
 # ran and skip their own user_data — the part that writes /etc/oyren/sandbox.env and starts the

@@ -57,4 +57,10 @@ chmod 0644 /etc/profile.d/25-oyren-browser.sh
 
 systemctl daemon-reload
 # NOT enabled: on-demand only (see the unit's header). oyren-open starts it.
+
+# No pin to record: the browser is a launcher, a unit and a hook over Chrome from the playwright
+# install, so its manifest identity is the hash of this directory.
+source "$HERE/../lib/tree-hash.sh"
+"$HERE/../manifest/stamp.sh" browser "$(cd "$HERE/../.." && tree_hash deploy/browser)"
+
 echo "✅ in-VM browser installed (start it with \`oyren-open <url>\`)"

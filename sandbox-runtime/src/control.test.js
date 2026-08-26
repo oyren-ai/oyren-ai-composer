@@ -257,3 +257,35 @@ test("route/list returns all configured routes", async () => {
   assert.equal(res.statusCode, 200)
   assert.equal(res.json().routes.length, 2)
 })
+test("status carries the image summary and `image` returns the whole manifest", async () => {
+  const file = path.join(tmp(), "image-manifest.json")
+  fs.writeFileSync(file, JSON.stringify({ version: "2026-08-25-1838", family: "base", builtAt: "2026-08-25T18:38:00Z", composerSha: "342436e", components: { runtime: "t-1", claude: "2.1.235" } }))
+  process.env.OYREN_IMAGE_MANIFEST = file
+  try {
+    const status = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/status", headers: auth }), status, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(status.json().listening, true)
+    assert.deepStrictEqual(status.json().image, { version: "2026-08-25-1838", family: "base", builtAt: "2026-08-25T18:38:00Z", composerSha: "342436e", runtime: "t-1" })
+    const image = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/image", headers: auth }), image, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(image.statusCode, 200)
+    assert.equal(image.json().components.claude, "2.1.235")
+  } finally {
+    delete process.env.OYREN_IMAGE_MANIFEST
+  }
+})
+
+test("`image` is a 404 on an image that predates manifests, and status still answers", async () => {
+  process.env.OYREN_IMAGE_MANIFEST = path.join(tmp(), "missing.json")
+  try {
+    const image = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/image", headers: auth }), image, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(image.statusCode, 404)
+    const status = makeRes()
+    await handleControl(makeReq({ method: "GET", url: "/_oyren/control/status", headers: auth }), status, { supervisor: fakeSupervisor(), workdir: tmp(), token: TOKEN })
+    assert.equal(status.statusCode, 200)
+    assert.equal(status.json().image, null)
+  } finally {
+    delete process.env.OYREN_IMAGE_MANIFEST
+  }
+})

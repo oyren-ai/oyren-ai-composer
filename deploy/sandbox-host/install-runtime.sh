@@ -107,4 +107,10 @@ systemctl daemon-reload
 # only starts once cloud-init writes that file on a real session droplet.
 systemctl enable oyren-sandbox.service
 
+# The runtime's identity in the image manifest is a hash of the trees that make it up (the server
+# plus the launchers and units in deploy/sandbox-host), computed exactly the way the bake runner
+# hashes a release, so `oyren update --check` can tell a changed runtime from an unchanged one.
+source "$HERE/../lib/tree-hash.sh"
+"$HERE/../manifest/stamp.sh" runtime "$(cd "$HERE/../.." && tree_hash sandbox-runtime deploy/sandbox-host)"
+
 echo "✅ sandbox runtime installed at ${APP_DIR}"

@@ -13,6 +13,11 @@ set -euo pipefail
 APP_DIR="/srv/composer/app"
 GIT_URL="${COMPOSER_GIT_URL:-https://github.com/oyren-ai/oyren-ai-composer.git}"
 GIT_REF="${COMPOSER_GIT_REF:-main}"
+# Stamped into the image manifest at the end (deploy/manifest/write-manifest.sh). The bake scripts
+# pass the real values over ssh; a by-hand run gets a fresh UTC stamp and "unknown".
+RELEASE_VERSION="${RELEASE_VERSION:-$(date -u +%Y-%m-%d-%H%M)}"
+RELEASE_FAMILY="${RELEASE_FAMILY:-base}"
+COMPOSER_SHA="${COMPOSER_SHA:-unknown}"
 
 # A freshly booted droplet is still running cloud-init's own apt for a minute or two; starting
 # into that race kills the bake on its first apt call (see wait-for-apt.sh for the post-mortem).
@@ -70,5 +75,13 @@ cp "$APP_DIR"/deploy/units/oyren-sandbox.service \
 mkdir -p /etc/oyren
 systemctl daemon-reload
 systemctl enable oyren-sandbox.service oyren-build.service oyren-edge.service
+
+# The image manifest, LAST. Each installer above stamped its own component as it finished; this
+# writes the whole thing from deploy/versions.env plus the tree hashes, under the bake's version.
+if [ "${SANDBOX_HOST:-1}" = "1" ]; then
+  echo "==> image manifest ($RELEASE_FAMILY $RELEASE_VERSION)"
+  bash "$APP_DIR/deploy/manifest/write-manifest.sh" --version "$RELEASE_VERSION" --family "$RELEASE_FAMILY" \
+    --composer-sha "$COMPOSER_SHA" --root "$APP_DIR"
+fi
 
 echo "✅ composer installed (units enabled, awaiting /etc/oyren/*.env from cloud-init)"

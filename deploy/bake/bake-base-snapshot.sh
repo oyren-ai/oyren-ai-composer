@@ -19,10 +19,14 @@ source ./lib.sh
 
 COMPOSER_DIR="$(cd ../.. && pwd)"
 NAME="oyren-bake-sandbox-$(date +%s)"
+# One UTC stamp names the bake everywhere: the snapshot, the image manifest inside it, and the
+# release the workflow publishes. The workflow passes it in so base and lean share one version.
+RELEASE_VERSION="${RELEASE_VERSION:-$(date -u +%Y-%m-%d-%H%M)}"
+COMPOSER_SHA="${COMPOSER_SHA:-$(git -C "$COMPOSER_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 # Name the VARIANT explicitly. There are two images now and they are indistinguishable from a bare
 # date, which is how you end up pointing DROPLET_SNAPSHOT_ID at the Lean one. The UTC HHMM suffix
 # keeps two bakes on the same day from colliding.
-SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-base-$(date -u +%Y-%m-%d-%H%M)}"
+SNAPSHOT_NAME="${SNAPSHOT_NAME:-oyren-sandbox-base-$RELEASE_VERSION}"
 
 # Bake on the SMALLEST disk (s-1vcpu-1gb = 25GB): DO refuses to boot an image onto a droplet with a
 # smaller disk than the image was made on, so the bake size sets the MINIMUM session droplet size.
@@ -47,8 +51,9 @@ retry 5 10 rsync -az --delete \
   --exclude .env --exclude .idea --exclude .claude \
   "$COMPOSER_DIR"/ "root@$IP:/srv/composer/app/"
 
-echo "▶ provisioning"
-retry 3 15 run_remote "$IP" ./provision-remote.sh
+echo "▶ provisioning ($RELEASE_VERSION from composer $COMPOSER_SHA)"
+retry 3 15 run_remote "$IP" ./provision-remote.sh \
+  "RELEASE_VERSION=$RELEASE_VERSION" "RELEASE_FAMILY=base" "COMPOSER_SHA=$COMPOSER_SHA"
 
 # cloud-init clean LAST, after all provisioning — critical. Without it, droplets booted from the
 # snapshot believe cloud-init already ran and SKIP their own user_data, which is the part that
