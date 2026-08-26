@@ -24,11 +24,23 @@ Codespace can move to a newer version without being replaced.
   sandbox-releases/<family>/latest.json        written only once promoted
   ```
 
-- Rollback is a rename to `retired-oyren-sandbox-…` and re-pointing `latest.json`; the prune
-  workflow keeps retired images as their own family.
+  The publish runs once per bucket in the `SPACES_RELEASES_BUCKETS` variable, with the same key
+  pair, so dev and prod get the same release from one run.
 
-The orchestrator boots the newest promoted snapshot per family and presigns the release files for
-a droplet that asks (`POST /sandbox/release`, authenticated like `/sandbox/git-token`).
+- Last, it registers the promoted image with each orchestrator in `IMAGE_REGISTRY_TARGETS`
+  (`deploy/bake/registerImage.mjs`). That row is what a launch boots; nothing scans DigitalOcean for
+  image names any more, and `latest.json` is published but no longer read.
+
+- Rollback is `pnpm images:prod deactivate --key CODESPACE_BASE --version <version> --reason "..."`
+  on the orchestrator: the previous active row is latest again, immediately, with no rename here.
+  Renaming to `retired-oyren-sandbox-…` still works and the prune workflow keeps retired images as
+  their own family, but it is no longer how a bad bake is taken out of service.
+
+- A registration that fails after the image was already promoted does not need a rebake: re-run the
+  workflow with `register_only` and the version, and it registers that version alone.
+
+The orchestrator boots the newest ACTIVE registered image per family and presigns that row's release
+files for a droplet that asks (`POST /sandbox/release`, authenticated like `/sandbox/git-token`).
 
 ## On the machine
 
@@ -71,6 +83,12 @@ This Codespace runs image <installed version>; the latest is <latest version>. P
   budget, 501 releases not configured.
 - `POST /sandbox/update-result` body `{appSlug, controlToken, state, step, from, to, error}` →
   `{ok: true}`; `done` sets the session's image version.
+- `POST /sandbox/images` body `{key, version, doImageId, doImageName, region, composerSha?,
+  manifestKey?, tarballKey?, tarballSha256?, source?}` → the stored row. Called by the bake workflow,
+  not by a machine, and authenticated with `Authorization: Bearer <IMAGE_REGISTRY_TOKEN>` rather than
+  a session control token. 201 created, 200 already registered with the same image id, 409 that
+  version claimed by a different one, 400 anything DigitalOcean does not confirm (the orchestrator
+  re-reads the image's name, type and regions before storing it), 503 no token configured.
 - Update step vocabulary: `starting`, `fetching`, `verifying`, `applying:<component>`, `restarting`,
   `done`. The session's status stays `active` throughout.
 - The orchestrator's own trigger runs `oyren update --yes --no-wait --json` through the control API
