@@ -18,12 +18,16 @@
 // is deleted at all without --apply. A snapshot in use by a RUNNING droplet is not at risk either
 // way — DO keeps the droplet's disk; the image is only needed to create new ones.
 
-/** Families the bake scripts produce, matched on the name prefix they hardcode. */
-export const FAMILIES = ["base", "zed", "lean"]
+/**
+ * Families the bake scripts produce, matched on the name prefix they hardcode. `leanfoundation` is
+ * its own family on purpose: it is rebuilt rarely, and counting it against `lean` would let two
+ * lean bakes push the only foundation out of the keep window.
+ */
+export const FAMILIES = ["base", "zed", "lean", "leanfoundation"]
 
 /** `oyren-sandbox-<family>-<anything>`; anything else is not ours and is never considered. */
 export function familyOf(name) {
-  const match = /^oyren-sandbox-(base|zed|lean)-/.exec(String(name || ""))
+  const match = /^oyren-sandbox-(leanfoundation|base|zed|lean)-/.exec(String(name || ""))
   return match ? match[1] : null
 }
 
