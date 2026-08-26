@@ -18,9 +18,13 @@ session boots from, the browser editor baked into it, the wildcard edge that rou
 - **`deploy/bake/`** — the pipeline the `Bake snapshots` workflow runs: bake the golden DO snapshot
   (`bake-base-snapshot.sh`, which carries streamed Zed from `deploy/zed/` and the in-VM browser
   from `deploy/browser/`), derive the Lean variant (`deploy/lean/`), smoke-boot each candidate and
-  promote it by rename (`promote-snapshot.sh`), and publish the release a live droplet updates from
-  (`build-release.sh`, `publish-release.sh`). Every run is one version stamp (UTC
-  `YYYY-MM-DD-HHMM`). See `docs/sandbox-updates.md`.
+  promote it by rename (`promote-snapshot.sh`), publish the release a live droplet updates from
+  (`build-release.sh`, `publish-release.sh`), and register the promoted image with each orchestrator
+  (`registerImage.mjs`) so new Codespaces boot it. Every run is one version stamp (UTC
+  `YYYY-MM-DD-HHMM`). Taking a bad version out of service is a flag on the orchestrator
+  (`pnpm images:prod deactivate --key CODESPACE_BASE --version <v> --reason "..."`), not a rename
+  here; a registration that failed after promotion is re-run with the workflow's `register_only`
+  input. See `docs/sandbox-updates.md`.
 - **`deploy/versions.env`** + **`deploy/manifest/`** — the one place every pin lives, and the image
   manifest (`/etc/oyren/image-manifest.json`) each bake stamps from it: version, family, composer
   sha, every pin, content hashes of the runtime/host/browser trees.

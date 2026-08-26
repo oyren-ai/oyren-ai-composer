@@ -4,7 +4,7 @@ import { createServer } from "node:http"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { registerWith, runCli } from "./registerImage.mjs"
+import { findImageId, registerWith, runCli } from "./registerImage.mjs"
 
 /** An orchestrator stand-in: records what it was sent and answers whatever the test asked for. */
 async function orchestrator(reply) {
@@ -150,4 +150,35 @@ test("--flag=value is accepted alongside --flag value", async () => {
     await runCli(["--version=2026-08-26-0900", "--image-id=42", "--targets=prod"], env, globalThis.fetch, () => {})
     assert.equal(api.seen[0].body.doImageId, "42")
   } finally { await api.close() }
+})
+
+test("findImageId resolves a promoted image by the name promote-snapshot.sh gave it", async () => {
+  const list = async () => [
+    { id: 111, name: "oyren-sandbox-base-2026-08-20-0900" },
+    { id: 242661992, name: "oyren-sandbox-base-2026-08-26-0900" },
+    { id: 333, name: "candidate-oyren-sandbox-base-2026-08-26-0900" },
+  ]
+  assert.equal(await findImageId("base", "2026-08-26-0900", "do-token", list), "242661992")
+})
+
+test("findImageId says which name it looked for when nothing matches", async () => {
+  await assert.rejects(
+    () => findImageId("lean", "2026-08-26-0900", "do-token", async () => []),
+    /no promoted image named oyren-sandbox-lean-2026-08-26-0900/,
+  )
+})
+
+test("the CLI looks the image up when no id is given and a DO token is present", async () => {
+  const api = await orchestrator(always(201))
+  const env = { ORCHESTRATOR_URL_PROD: api.url, IMAGE_REGISTRY_TOKEN_PROD: "t", DO_API_TOKEN: "do-token" }
+  const fakeDo = async () => new Response(JSON.stringify({ snapshots: [{ id: 777, name: "oyren-sandbox-base-2026-08-26-0900" }] }), { status: 200 })
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (url, init) => (String(url).includes("digitalocean") ? fakeDo() : realFetch(url, init))
+  try {
+    await runCli(["--version", "2026-08-26-0900", "--targets", "prod"], env, globalThis.fetch, () => {})
+    assert.equal(api.seen[0].body.doImageId, "777")
+  } finally {
+    globalThis.fetch = realFetch
+    await api.close()
+  }
 })

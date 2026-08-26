@@ -75,8 +75,9 @@ async function doApi(path, { token, method = "GET" }) {
   return body
 }
 
-/** Every droplet snapshot in the account (paged — DO caps per_page at 200). */
-async function listSnapshots(token) {
+/** Every droplet snapshot in the account (paged — DO caps per_page at 200). Exported so
+ *  registerImage.mjs can find a promoted image by name without a second DigitalOcean client. */
+export async function listSnapshots(token) {
   const all = []
   for (let page = 1; page <= 20; page++) {
     const body = await doApi(`/snapshots?resource_type=droplet&per_page=200&page=${page}`, { token })

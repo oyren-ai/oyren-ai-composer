@@ -8,12 +8,17 @@ name: Bake snapshots
 #   2. bake_base  → a BASE snapshot named `candidate-oyren-sandbox-base-<version>`
 #   3. promote    → smoke-boot the candidate, then rename it `oyren-sandbox-base-<version>`; a
 #                   failed smoke boot deletes the candidate (deploy/bake/promote-snapshot.sh)
-#   4. publish    → manifest + tarball to the private Spaces bucket; latest.json only once promoted
-#   5. derive_lean, then 3 and 4 again for the lean image
+#   4. publish    → manifest + tarball to every releases bucket; latest.json only once promoted
+#   5. register   → POST the promoted image to each orchestrator (deploy/bake/registerImage.mjs)
+#   6. derive_lean, then 3, 4 and 5 again for the lean image
 #
-# Nothing points the orchestrator at image ids any more: it boots the newest promoted
-# `oyren-sandbox-<family>-…` it finds, and a live Codespace updates itself from latest.json.
-# Rollback = rename the image to `retired-…` (the prune workflow keeps those as their own family).
+# The orchestrator boots the newest ACTIVE row in its image registry, which step 5 writes. Rollback
+# is `pnpm images:prod deactivate --key ... --version ...` there: the previous version is latest
+# again, with no rename here. Renaming to `retired-…` still works and the prune workflow keeps those
+# as their own family, but it is no longer how a bad bake is taken out of service.
+#
+# `register_only` re-runs step 5 alone for a version that is already promoted and published, so a
+# transient orchestrator outage never costs a rebake. It needs `version` and nothing else.
 
 on:
   workflow_dispatch:
@@ -42,6 +47,10 @@ on:
         description: "Version stamp to use instead of now (YYYY-MM-DD-HHMM), e.g. to re-publish"
         type: string
         default: ""
+      register_only:
+        description: "Skip baking, promoting and publishing — only re-register an already promoted version (needs version)"
+        type: boolean
+        default: false
       region:
         description: "DigitalOcean region"
         type: string
@@ -68,26 +77,54 @@ jobs:
       # A plain id, not really secret — accept either a secret or a repo/org variable.
       DO_SSH_KEY_ID: ${{ secrets.DO_SSH_KEY_ID || vars.DO_SSH_KEY_ID }}
       DO_REGION: ${{ inputs.region }}
-      # The private releases bucket and its key pair (publish-release.sh reads these).
-      SPACES_BUCKET: ${{ vars.SPACES_RELEASES_BUCKET }}
+      # Every releases bucket the same key pair can write, comma-separated (publish runs once per
+      # bucket with SPACES_BUCKET set to it). Falls back to the single-bucket variable.
+      SPACES_BUCKETS: ${{ vars.SPACES_RELEASES_BUCKETS || vars.SPACES_RELEASES_BUCKET }}
       SPACES_REGION: ${{ vars.SPACES_RELEASES_REGION || 'fra1' }}
       AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_RELEASES_KEY }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_RELEASES_SECRET }}
       AWS_EC2_METADATA_DISABLED: "true"
+      # Which orchestrators learn about the image, and the bearer each one trusts. registerImage.mjs
+      # reads these by name; the tokens never reach a command line.
+      REGISTER_TARGETS: ${{ vars.IMAGE_REGISTRY_TARGETS || 'dev,prod' }}
+      ORCHESTRATOR_URL_DEV: ${{ vars.ORCHESTRATOR_URL_DEV }}
+      ORCHESTRATOR_URL_PROD: ${{ vars.ORCHESTRATOR_URL_PROD }}
+      IMAGE_REGISTRY_TOKEN_DEV: ${{ secrets.IMAGE_REGISTRY_TOKEN_DEV }}
+      IMAGE_REGISTRY_TOKEN_PROD: ${{ secrets.IMAGE_REGISTRY_TOKEN_PROD }}
       PUBLISH: ${{ inputs.publish }}
       PROMOTE: ${{ inputs.promote }}
+      REGISTER_ONLY: ${{ inputs.register_only }}
     steps:
       - uses: actions/checkout@v5
+
+      # registerImage.mjs runs on the runner (fetch + AbortSignal.timeout), so pin a modern Node
+      # rather than whatever the image ships, as prune-snapshots.yml does.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
 
       - name: Preflight — required secrets present
         run: |
           miss=
           [ -n "$DO_API_TOKEN" ] || miss="$miss DIGITALOCEAN_ACCESS_TOKEN"
-          [ -n "$DO_SSH_KEY_ID" ] || miss="$miss DO_SSH_KEY_ID(secret-or-var)"
-          if [ "$PUBLISH" = "true" ]; then
-            [ -n "$SPACES_BUCKET" ] || miss="$miss SPACES_RELEASES_BUCKET(var)"
+          [ "$REGISTER_ONLY" = "true" ] || [ -n "$DO_SSH_KEY_ID" ] || miss="$miss DO_SSH_KEY_ID(secret-or-var)"
+          if [ "$PUBLISH" = "true" ] && [ "$REGISTER_ONLY" != "true" ]; then
+            [ -n "$SPACES_BUCKETS" ] || miss="$miss SPACES_RELEASES_BUCKETS(var)"
             [ -n "$AWS_ACCESS_KEY_ID" ] || miss="$miss SPACES_RELEASES_KEY"
             [ -n "$AWS_SECRET_ACCESS_KEY" ] || miss="$miss SPACES_RELEASES_SECRET"
+          fi
+          # Registration config is checked up front: a promote run that cannot register would
+          # otherwise fail an hour in, with the image already renamed.
+          if [ "$PROMOTE" = "true" ] || [ "$REGISTER_ONLY" = "true" ]; then
+            for t in ${REGISTER_TARGETS//,/ }; do
+              up="${t^^}"
+              url_var="ORCHESTRATOR_URL_$up"; tok_var="IMAGE_REGISTRY_TOKEN_$up"
+              [ -n "${!url_var:-}" ] || miss="$miss $url_var(var)"
+              [ -n "${!tok_var:-}" ] || miss="$miss $tok_var"
+            done
+          fi
+          if [ "$REGISTER_ONLY" = "true" ] && [ -z "${{ inputs.version }}" ]; then
+            miss="$miss version(input, required by register_only)"
           fi
           if [ -n "$miss" ]; then
             echo "::error::Missing required config:$miss — add it to the repo/org before baking."
@@ -97,6 +134,7 @@ jobs:
           echo "preflight ok"
 
       - name: Install bake SSH key (if a key secret is provided)
+        if: ${{ !inputs.register_only }}
         env:
           BAKE_SSH_PRIVATE_KEY: ${{ secrets.BAKE_SSH_PRIVATE_KEY }}
         run: |
@@ -118,12 +156,16 @@ jobs:
           echo "COMPOSER_SHA=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
           echo "version $v from composer $(git rev-parse --short HEAD)"
 
+      # Skipped on a re-registration: rebuilding would produce a NEW tarball hash for a version
+      # whose release was published long ago, and the registry would be told the wrong one.
       - name: Build release artifacts
+        if: ${{ !inputs.register_only }}
         run: |
           bash deploy/bake/build-release.sh --family base --version "$RELEASE_VERSION" --composer-sha "$COMPOSER_SHA" --out out
           bash deploy/bake/build-release.sh --family lean --version "$RELEASE_VERSION" --composer-sha "$COMPOSER_SHA" --out out
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.register_only }}
         with:
           name: sandbox-release-${{ env.RELEASE_VERSION }}
           path: out/
@@ -131,7 +173,7 @@ jobs:
 
       - name: Bake BASE snapshot
         id: base
-        if: ${{ inputs.bake_base }}
+        if: ${{ inputs.bake_base && !inputs.register_only }}
         env:
           SNAPSHOT_NAME: candidate-oyren-sandbox-base-${{ env.RELEASE_VERSION }}
           RELEASE_FAMILY: base
@@ -144,21 +186,41 @@ jobs:
           echo "baked base candidate: $id"
 
       - name: Smoke-boot + promote BASE
-        if: ${{ inputs.bake_base && inputs.promote }}
+        if: ${{ inputs.bake_base && inputs.promote && !inputs.register_only }}
         env:
           IMAGE_ID: ${{ steps.base.outputs.id }}
           FAMILY: base
         run: bash deploy/bake/promote-snapshot.sh
 
       - name: Publish BASE release
-        if: ${{ inputs.bake_base && inputs.publish }}
+        if: ${{ inputs.bake_base && inputs.publish && !inputs.register_only }}
         run: |
           latest=; [ "$PROMOTE" = "true" ] && latest=--latest
-          bash deploy/bake/publish-release.sh --family base --image-id "${{ steps.base.outputs.id }}" --out out $latest
+          for bucket in ${SPACES_BUCKETS//,/ }; do
+            echo "▶ publishing base $RELEASE_VERSION to $bucket"
+            SPACES_BUCKET="$bucket" bash deploy/bake/publish-release.sh --family base --image-id "${{ steps.base.outputs.id }}" --out out $latest
+          done
+
+      # Record the promoted image so new Codespaces boot it. On a re-registration run the id is
+      # absent and registerImage.mjs looks it up by name; the manifest is only on disk when this run
+      # built it, and its hash is a nice-to-have either way.
+      - name: Register BASE image
+        if: ${{ inputs.bake_base && (inputs.promote || inputs.register_only) }}
+        env:
+          IMAGE_ID: ${{ steps.base.outputs.id }}
+        run: |
+          args=(--family base --version "$RELEASE_VERSION" --region "$DO_REGION" --targets "$REGISTER_TARGETS")
+          if [ -n "$IMAGE_ID" ]; then args+=(--image-id "$IMAGE_ID"); fi
+          if [ -f "out/manifest.base.json" ]; then args+=(--manifest "out/manifest.base.json"); fi
+          if [ "$PUBLISH" != "true" ]; then args+=(--no-release); fi
+          # A re-registration's HEAD is not the commit that was baked; the row already carries the
+          # right one, so send nothing rather than something wrong.
+          if [ "$REGISTER_ONLY" = "true" ]; then unset COMPOSER_SHA; fi
+          node deploy/bake/registerImage.mjs "${args[@]}"
 
       - name: Resolve base id for the lean derive
         id: resolve
-        if: ${{ inputs.derive_lean }}
+        if: ${{ inputs.derive_lean && !inputs.register_only }}
         run: |
           base="${{ steps.base.outputs.id }}"
           [ -n "$base" ] || base="${{ inputs.base_snapshot_id }}"
@@ -170,7 +232,7 @@ jobs:
 
       - name: Derive LEAN snapshot
         id: lean
-        if: ${{ inputs.derive_lean }}
+        if: ${{ inputs.derive_lean && !inputs.register_only }}
         env:
           BASE_SNAPSHOT_ID: ${{ steps.resolve.outputs.base }}
           SNAPSHOT_NAME: candidate-oyren-sandbox-lean-${{ env.RELEASE_VERSION }}
@@ -182,17 +244,37 @@ jobs:
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Smoke-boot + promote LEAN
-        if: ${{ inputs.derive_lean && inputs.promote }}
+        if: ${{ inputs.derive_lean && inputs.promote && !inputs.register_only }}
         env:
           IMAGE_ID: ${{ steps.lean.outputs.id }}
           FAMILY: lean
         run: bash deploy/bake/promote-snapshot.sh
 
       - name: Publish LEAN release
-        if: ${{ inputs.derive_lean && inputs.publish }}
+        if: ${{ inputs.derive_lean && inputs.publish && !inputs.register_only }}
         run: |
           latest=; [ "$PROMOTE" = "true" ] && latest=--latest
-          bash deploy/bake/publish-release.sh --family lean --image-id "${{ steps.lean.outputs.id }}" --out out $latest
+          for bucket in ${SPACES_BUCKETS//,/ }; do
+            echo "▶ publishing lean $RELEASE_VERSION to $bucket"
+            SPACES_BUCKET="$bucket" bash deploy/bake/publish-release.sh --family lean --image-id "${{ steps.lean.outputs.id }}" --out out $latest
+          done
+
+      # Record the promoted image so new Codespaces boot it. On a re-registration run the id is
+      # absent and registerImage.mjs looks it up by name; the manifest is only on disk when this run
+      # built it, and its hash is a nice-to-have either way.
+      - name: Register LEAN image
+        if: ${{ inputs.derive_lean && (inputs.promote || inputs.register_only) }}
+        env:
+          IMAGE_ID: ${{ steps.lean.outputs.id }}
+        run: |
+          args=(--family lean --version "$RELEASE_VERSION" --region "$DO_REGION" --targets "$REGISTER_TARGETS")
+          if [ -n "$IMAGE_ID" ]; then args+=(--image-id "$IMAGE_ID"); fi
+          if [ -f "out/manifest.lean.json" ]; then args+=(--manifest "out/manifest.lean.json"); fi
+          if [ "$PUBLISH" != "true" ]; then args+=(--no-release); fi
+          # A re-registration's HEAD is not the commit that was baked; the row already carries the
+          # right one, so send nothing rather than something wrong.
+          if [ "$REGISTER_ONLY" = "true" ]; then unset COMPOSER_SHA; fi
+          node deploy/bake/registerImage.mjs "${args[@]}"
 
       - name: Summary
         if: always()
@@ -205,11 +287,15 @@ jobs:
             echo "| base | ${{ steps.base.outputs.id || inputs.base_snapshot_id || '(not baked)' }} | $PROMOTE | $PUBLISH |"
             echo "| lean | ${{ steps.lean.outputs.id || '(not derived)' }} | $PROMOTE | $PUBLISH |"
             echo ""
-            if [ "$PROMOTE" = "true" ]; then
-              echo "Promoted images are named \`oyren-sandbox-<family>-$RELEASE_VERSION\`; the orchestrator boots the newest promoted image per family, and running Codespaces can update to this release."
+            if [ "$REGISTER_ONLY" = "true" ]; then
+              echo "Re-registration only: nothing was baked, promoted or published. \`$RELEASE_VERSION\` was registered with **$REGISTER_TARGETS** (already-registered images answer 200 and change nothing)."
+            elif [ "$PROMOTE" = "true" ]; then
+              echo "Promoted images are named \`oyren-sandbox-<family>-$RELEASE_VERSION\` and were registered with **$REGISTER_TARGETS**. Each orchestrator now boots the newest ACTIVE registered image per key, and running Codespaces can update to this release."
+              echo ""
+              echo "Published to: \`$SPACES_BUCKETS\`."
             else
-              echo "Images kept their \`candidate-\` names and latest.json was not written. Promote by hand with \`deploy/bake/promote-snapshot.sh\`, then re-run publish."
+              echo "Images kept their \`candidate-\` names, nothing was registered and latest.json was not written. Promote by hand with \`deploy/bake/promote-snapshot.sh\`, then re-run with \`register_only\`."
             fi
             echo ""
-            echo "Rollback: rename the image to \`retired-oyren-sandbox-<family>-$RELEASE_VERSION\` and re-point latest.json at the previous version."
+            echo "Rollback: on the orchestrator, \`pnpm images:prod deactivate --key CODESPACE_BASE --version $RELEASE_VERSION --reason \"...\"\`. The previous active version becomes latest again; no image rename, no redeploy."
           } >> "$GITHUB_STEP_SUMMARY"

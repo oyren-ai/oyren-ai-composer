@@ -17,6 +17,16 @@
 // run fails, so one orchestrator being down still records the image with the other.
 import { readFileSync } from "node:fs"
 import { buildBody, describe, sourceFrom, targetsFrom } from "./imageRegistry.mjs"
+import { listSnapshots } from "./pruneSnapshots.mjs"
+
+/** Find a promoted image by the name promote-snapshot.sh gave it. Only the re-registration path
+ *  needs this: the bake that knew the id ran days ago, and the version is what a human remembers. */
+export async function findImageId(family, version, token, list = listSnapshots) {
+  const name = `oyren-sandbox-${family}-${version}`
+  const hit = (await list(token)).find((snapshot) => snapshot.name === name)
+  if (!hit) throw new Error(`no promoted image named ${name} in this DigitalOcean account`)
+  return String(hit.id)
+}
 
 /** POST to one orchestrator. Never throws: the caller tries every target before failing the run. */
 export async function registerWith(target, body, fetchImpl = globalThis.fetch) {
@@ -50,10 +60,13 @@ const readManifest = (path) => {
 
 export async function runCli(argv, env = process.env, fetchImpl = globalThis.fetch, log = console.log) {
   const family = flag(argv, "family", "base")
+  const version = flag(argv, "version", env.RELEASE_VERSION ?? "")
+  // A re-registration passes no id: look up the promoted image by the name it was renamed to.
+  const imageId = flag(argv, "image-id", "") || (env.DO_API_TOKEN ? await findImageId(family, version, env.DO_API_TOKEN) : "")
   const body = buildBody({
     family,
-    version: flag(argv, "version", env.RELEASE_VERSION ?? ""),
-    imageId: flag(argv, "image-id", ""),
+    version,
+    imageId,
     region: flag(argv, "region", env.DO_REGION ?? "fra1"),
     composerSha: flag(argv, "composer-sha", env.COMPOSER_SHA ?? ""),
     manifest: readManifest(flag(argv, "manifest", "")),
