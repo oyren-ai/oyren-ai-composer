@@ -47,9 +47,11 @@ systemctl daemon-reload
 # terminal.shell.program — zed-shell, NOT a fixed shell or `tmux`: the tmux-vs-plain choice has to
 # be re-read per terminal tab (launch default + `zed-term`), and a program named here is spawned
 # fresh for every tab, which is exactly the hook for that.
-echo "==> seeding Zed settings for $SANDBOX_USER"
-install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "$USER_HOME/.config" "$USER_HOME/.config/zed"
-cat > "$USER_HOME/.config/zed/settings.json" <<'EOF'
+# SEED_USER_FILES=0 (a live update) leaves the user's settings.json alone: by then it is theirs.
+if [ "${SEED_USER_FILES:-1}" = "1" ]; then
+  echo "==> seeding Zed settings for $SANDBOX_USER"
+  install -d -o "$SANDBOX_USER" -g "$SANDBOX_USER" "$USER_HOME/.config" "$USER_HOME/.config/zed"
+  cat > "$USER_HOME/.config/zed/settings.json" <<'EOF'
 {
   "auto_update": false,
   "telemetry": { "diagnostics": false, "metrics": false },
@@ -57,6 +59,7 @@ cat > "$USER_HOME/.config/zed/settings.json" <<'EOF'
   "terminal": { "shell": { "program": "/usr/local/bin/zed-shell" } }
 }
 EOF
-chown "$SANDBOX_USER:$SANDBOX_USER" "$USER_HOME/.config/zed/settings.json"
+  chown "$SANDBOX_USER:$SANDBOX_USER" "$USER_HOME/.config/zed/settings.json"
+fi
 
 echo "✅ streamed Zed installed — snapshot this droplet as the zed variant"
