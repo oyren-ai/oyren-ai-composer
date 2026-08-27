@@ -106,6 +106,106 @@ printf '{ "name": "oyren-dsh", "private": true }\n' > "$DSH_DIR/package.json"
   --allow-build=@google/genai \
   --allow-build=protobufjs \
   "@deepseek-ai/dsh@${DSH_VERSION}")
+
+# DeepSeek Harness keeps its settings/credential API plane loopback-only even on a --trusted-host
+# deployment (PRIVILEGED_METHODS in dsh-client-connection re-checks the browser-trust fence with an
+# empty trust list, so settings.describe/update, credentials.*, llm.discoverModels etc. 403 for
+# every non-loopback Host), and its client settings UI mirrors that with a loopback-only
+# persistence mode. The sandbox serves the UI at the public dsh-<label> hostname, so untouched,
+# Settings -> Models fails with "settings are unavailable in this browser". Until upstream grows a
+# flag for this, patch the three exact spots after install; every replacement must match exactly
+# once or the bake fails loudly — a silent miss would ship a broken Settings page with no error at
+# build time.
+echo "==> dsh settings plane: allow the declared trusted hosts"
+node - "$DSH_DIR/node_modules/.pnpm" <<'NODE' || { echo "ERROR: dsh settings-trust patch failed" >&2; exit 1; }
+const fs = require("fs");
+const path = require("path");
+const pnpmRoot = process.argv[2];
+// Each row: pnpm package-dir prefix, path under the package's own node_modules, and its
+// exact-match replacement pairs. Every physical copy in .pnpm (peer-set variants included) is
+// patched; each pair must match exactly once per file unless the replacement is already present
+// (rerun-safe).
+const targets = [
+  {
+    prefix: "@deepseek-ai+dsh-client-connection@",
+    rel: "@deepseek-ai/dsh-client-connection/lib/index.js",
+    pairs: [
+      [
+        '* privileged methods additionally pass it with an empty trust list, which\n* pins them to loopback.',
+        '* privileged methods additionally pass the fence a second time against the\n* declared `trustedHosts` (loopback plus this deployment\'s authorities), so\n* the configuration plane stays closed to anonymous callers while remaining\n* usable through an authenticated edge proxy that forwards the declared\n* Host/Origin pair (Oyren sandbox deployment: the router token-gates the dsh\n* hostname before proxying).'
+      ],
+      [
+        'if (method !== void 0 && PRIVILEGED_METHODS.has(method) && !isTrustedApiRequest(request, [])) return new Response("forbidden", { status: 403 });',
+        'if (method !== void 0 && PRIVILEGED_METHODS.has(method) && !isTrustedApiRequest(request, trustedHosts)) return new Response("forbidden", { status: 403 });'
+      ]
+    ]
+  },
+  {
+    prefix: "@deepseek-ai+dsh-client-ui-settings@",
+    rel: "@deepseek-ai/dsh-client-ui-settings/lib/client.js",
+    pairs: [
+      [
+        'const mirror = new SettingsDescribeMirror(connection.api, connection.isLoopback ? "host" : "memory");',
+        'const mirror = new SettingsDescribeMirror(connection.api, "host");'
+      ],
+      [
+        'const controller = new SettingsScopeController(connection.api, spec, this.mirror, connection.isLoopback ? "host" : "memory", this.schema);',
+        'const controller = new SettingsScopeController(connection.api, spec, this.mirror, "host", this.schema);'
+      ]
+    ]
+  },
+  {
+    prefix: "@deepseek-ai+dsh-client-ui-settings-general@",
+    rel: "@deepseek-ai/dsh-client-ui-settings-general/lib/client.js",
+    pairs: [
+      [
+        'const documentController = connection.isLoopback ? new SettingsDocumentStore(connection.api, ctx.settingsScope.describe()) : void 0;',
+        'const documentController = new SettingsDocumentStore(connection.api, ctx.settingsScope.describe());'
+      ]
+    ]
+  }
+];
+let failures = 0;
+for (const target of targets) {
+  const dirs = fs.readdirSync(pnpmRoot).filter((name) => name.startsWith(target.prefix));
+  if (dirs.length === 0) {
+    console.error(`ERROR: no ${target.prefix}* package in ${pnpmRoot}`);
+    failures += 1;
+    continue;
+  }
+  for (const dir of dirs) {
+    const file = path.join(pnpmRoot, dir, "node_modules", target.rel);
+    let src;
+    try {
+      src = fs.readFileSync(file, "utf8");
+    } catch (error) {
+      console.error(`ERROR: cannot read ${file}: ${error.message}`);
+      failures += 1;
+      continue;
+    }
+    for (const [oldText, newText] of target.pairs) {
+      if (src.includes(newText)) continue; // already patched — nothing to do
+      const parts = src.split(oldText);
+      if (parts.length !== 2) {
+        console.error(`ERROR: expected exactly one occurrence of the pattern in ${file}:\n  ${oldText.slice(0, 90)}...`);
+        failures += 1;
+        continue;
+      }
+      src = parts.join(newText);
+    }
+    fs.writeFileSync(file, src);
+    console.log(`    patched ${path.relative(pnpmRoot, file)}`);
+  }
+}
+if (failures > 0) process.exit(1);
+NODE
+# Parse-level gate on exactly the three patched files; the boot smoke below is the behavior-level gate.
+find "$DSH_DIR/node_modules/.pnpm" -maxdepth 6 -type f \( \
+  -path '*/@deepseek-ai+dsh-client-connection@*/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js' -o \
+  -path '*/@deepseek-ai+dsh-client-ui-settings@*/node_modules/@deepseek-ai/dsh-client-ui-settings/lib/client.js' -o \
+  -path '*/@deepseek-ai+dsh-client-ui-settings-general@*/node_modules/@deepseek-ai/dsh-client-ui-settings-general/lib/client.js' \) \
+  -print0 | xargs -0 -r -n1 node --check \
+  || { echo "ERROR: a patched dsh file failed node --check" >&2; exit 1; }
 printf '%s\n' '#!/bin/sh' "exec \"${DSH_DIR}/node_modules/.bin/dsh\" \"\$@\"" > /usr/local/bin/dsh
 chmod 0755 /usr/local/bin/dsh
 # Same reasoning as claude's smoke check above: only running it proves the install is usable — a
@@ -115,6 +215,38 @@ case "$DSH_SMOKE" in
   *"$DSH_VERSION"*) echo "    dsh smoke: $DSH_SMOKE" ;;
   *) echo "ERROR: dsh does not run after install: $DSH_SMOKE" >&2; exit 1 ;;
 esac
+# Boot the patched server once and prove the settings plane answers for a declared trusted
+# authority — the exact fence the sandbox router relies on (it forwards Host verbatim). This is the
+# behavior-level counterpart of the exact-match patch gate above.
+echo "==> dsh settings-trust boot smoke"
+DSH_SMOKE_PORT=3199
+DSH_SMOKE_LOG="$(mktemp)"
+HOME=/root dsh --profile web --no-open --port "$DSH_SMOKE_PORT" --trusted-host bake-check.local >"$DSH_SMOKE_LOG" 2>&1 &
+DSH_SMOKE_PID=$!
+dsh_smoke_ok=""
+for _ in $(seq 1 90); do
+  if curl -fsS -m 5 -X POST "http://127.0.0.1:${DSH_SMOKE_PORT}/api/settings.describe" \
+    -H 'Host: bake-check.local' -H 'content-type: application/json' \
+    -d '{"type":"client-request","rpcId":"rpc-bake-1","method":"settings.describe","payload":{}}' \
+    >/tmp/dsh-settings-smoke-body 2>/dev/null \
+    && grep -q '"server-response"' /tmp/dsh-settings-smoke-body \
+    && ! grep -q 'forbidden' /tmp/dsh-settings-smoke-body; then
+    dsh_smoke_ok=1
+    break
+  fi
+  kill -0 "$DSH_SMOKE_PID" 2>/dev/null || break
+  sleep 1
+done
+kill "$DSH_SMOKE_PID" 2>/dev/null || true
+wait "$DSH_SMOKE_PID" 2>/dev/null || true
+if [ -n "$dsh_smoke_ok" ]; then
+  echo "    settings.describe answers over a trusted host"
+  rm -f "$DSH_SMOKE_LOG"
+else
+  echo "ERROR: dsh settings-trust boot smoke failed (see $DSH_SMOKE_LOG)" >&2
+  cat "$DSH_SMOKE_LOG" >&2
+  exit 1
+fi
 
 echo "==> cursor (vendor installer — no pinned version available)"
 su - "$SANDBOX_USER" -c 'curl https://cursor.com/install -fsS | bash'
