@@ -1,4 +1,4 @@
-// Shared by both systemd launchers (start-sandbox.mjs, start-editor.mjs).
+// Shared by the systemd launchers (start-sandbox.mjs, start-editor.mjs, start-tmux.mjs, start-zed.mjs).
 //
 // The orchestrator delivers a session's environment as CONTAINER_ENV_B64 — base64 of a JSON object
 // — inside cloud-init's /etc/oyren/sandbox.env. It stays base64 rather than becoming plain
@@ -26,4 +26,14 @@ export function mergedEnv() {
   const env = { ...process.env, ...sessionEnv() }
   delete env.CONTAINER_ENV_B64
   return env
+}
+
+/** The Node heap default entrypoint.sh gives agent and build commands, so heavy Node-based test
+ *  and build runs don't OOM-kill the whole machine: --max-old-space-size from OYREN_NODE_HEAP_MB
+ *  (default 4096) unless NODE_OPTIONS already names one. Pure: returns a new env. */
+export function withNodeHeap(env) {
+  const current = env.NODE_OPTIONS ?? ''
+  if (/(^|\s)--max-old-space-size=/.test(current)) return { ...env }
+  const heap = `--max-old-space-size=${env.OYREN_NODE_HEAP_MB ?? '4096'}`
+  return { ...env, NODE_OPTIONS: current ? `${heap} ${current}` : heap }
 }

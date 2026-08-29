@@ -56,4 +56,7 @@ export PATH="\$ELAN_HOME/bin:\$PATH"
 EOF
 chmod 0644 /etc/profile.d/30-oyren-lean.sh
 
+# The toolchain is the lean component's version in the image manifest (null on non-lean images).
+"$HERE/../manifest/stamp.sh" lean "$(tr -d '[:space:]' < "$LEAN_DIR/lean-toolchain")"
+
 echo "✅ Lean + Mathlib installed — snapshot this droplet as the lean variant"

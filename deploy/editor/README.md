@@ -15,7 +15,7 @@ sudo ../sandbox-host/install-workspace-dir.sh   # the folder it opens
 
 | Env | Default | |
 |---|---|---|
-| `OPENVSCODE_VERSION` | `1.109.5` | Pinned. Bump deliberately: proposed APIs move between versions. |
+| `OPENVSCODE_VERSION` | from `deploy/versions.env` | Pinned there with every other pin. Bump deliberately: proposed APIs move between versions. An exported value still wins. |
 | `EDITOR_USER` | `oyren` | Owns and runs the server. Created if missing. |
 | `INSTALL_DIR` | `/opt/openvscode-server` | |
 | `INSTALL_CLAUDE_EXTENSION` | `1` | Anthropic's extension, from Open VSX. |
