@@ -18,7 +18,7 @@ source ./lib-images.sh
 
 : "${IMAGE_ID:?must be set (the candidate image id)}"
 : "${FAMILY:?must be set (base|lean)}"
-: "${RELEASE_VERSION:?must be set (the bake's version stamp)}"
+: "${RELEASE_VERSION:?must be set (the version stamp of this bake)}"
 FINAL_NAME="oyren-sandbox-$FAMILY-$RELEASE_VERSION"
 
 USER_DATA="$(mktemp)"
