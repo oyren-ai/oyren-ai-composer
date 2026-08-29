@@ -72,7 +72,7 @@ test("a family with fewer snapshots than keep loses nothing", () => {
 
 test("an empty family is reported, not skipped", () => {
   const plan = planPrune([], { keep: 2 })
-  assert.deepEqual(plan.map((f) => f.family), ["base", "zed", "lean"])
+  assert.deepEqual(plan.map((f) => f.family), ["base", "zed", "lean", "retired-base", "retired-zed", "retired-lean"])
   assert.deepEqual(plan.flatMap((f) => f.kept), [])
 })
 
@@ -90,4 +90,22 @@ test("ordering is by created_at, not by name or list order", () => {
 test("reports the GB the plan reclaims", () => {
   assert.equal(reclaimedGb(planPrune(ACCOUNT, { keep: 1 })), 10 + 10 + 12) // b1+b2 (10 each) + z1 (12)
   assert.equal(reclaimedGb(planPrune(ACCOUNT, { keep: 9 })), 0)
+})
+
+test("retired images prune as their own family; candidates and user snapshots are never ours", () => {
+  assert.equal(familyOf("retired-oyren-sandbox-base-2026-08-19-1000"), "retired-base")
+  assert.equal(familyOf("retired-oyren-sandbox-lean-2026-08-19-1000"), "retired-lean")
+  assert.equal(familyOf("candidate-oyren-sandbox-base-2026-08-19-1000"), null)
+  assert.equal(familyOf("oyren-user-1a2b3c4d-5e6f7a8b-2026-08-19-1000"), null)
+  const plan = planPrune(
+    [
+      snap("oyren-sandbox-base-2026-08-19-1000", "2026-08-19T10:00:00Z", "b3"),
+      snap("retired-oyren-sandbox-base-2026-08-10-1000", "2026-08-10T10:00:00Z", "r1"),
+      snap("retired-oyren-sandbox-base-2026-08-01-1000", "2026-08-01T10:00:00Z", "r2"),
+    ],
+    { keep: 1 },
+  )
+  assert.deepEqual(ids(plan, "base", "kept"), ["b3"])
+  assert.deepEqual(ids(plan, "retired-base", "kept"), ["r1"])
+  assert.deepEqual(ids(plan, "retired-base", "deleted"), ["r2"])
 })

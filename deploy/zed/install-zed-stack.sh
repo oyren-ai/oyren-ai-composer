@@ -11,8 +11,9 @@ export DEBIAN_FRONTEND=noninteractive
 APT="apt-get -o DPkg::Lock::Timeout=300"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-KASMVNC_VERSION="${KASMVNC_VERSION:-1.5.0}"
-ZED_VERSION="${ZED_VERSION:-1.15.0}"
+# KASMVNC_VERSION and ZED_VERSION come from deploy/versions.env; exported values still win.
+source "$HERE/../lib/versions.sh"
+load_versions
 KASMVNC_DEB_URL="${KASMVNC_DEB_URL:-https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/kasmvncserver_noble_${KASMVNC_VERSION}_amd64.deb}"
 ZED_TARBALL_URL="${ZED_TARBALL_URL:-https://github.com/zed-industries/zed/releases/download/v${ZED_VERSION}/zed-linux-x86_64.tar.gz}"
 
@@ -98,5 +99,8 @@ grep -q foreground <<<"$ZED_HELP" \
 VKINFO="$(vulkaninfo --summary 2>&1 || true)"
 grep -qi llvmpipe <<<"$VKINFO" \
   || { echo "ERROR: lavapipe (llvmpipe) does not enumerate via vulkaninfo — mesa install broken:" >&2; tail -n 20 <<<"$VKINFO" >&2; exit 1; }
+
+"$HERE/../manifest/stamp.sh" zed "$ZED_VERSION"
+"$HERE/../manifest/stamp.sh" kasmvnc "$KASMVNC_VERSION"
 
 echo "✅ zed stack installed (KasmVNC ${KASMVNC_VERSION}, Zed ${ZED_VERSION})"

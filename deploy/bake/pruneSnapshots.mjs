@@ -5,8 +5,10 @@
 // family is what you actually want: the current one, plus one to roll back to.
 //
 // WHAT IT WILL TOUCH: only snapshots named `oyren-sandbox-<family>-<timestamp>` (the names
-// bake-base-snapshot.sh / derive-zed-snapshot.sh / derive-lean-snapshot.sh generate). Anything else
-// in the account — hand-made snapshots, other projects, volume snapshots — is never a candidate.
+// bake-base-snapshot.sh / derive-lean-snapshot.sh generate) and their `retired-` twins (a promoted
+// image renamed to roll it back; kept as its own family so a rollback target survives a prune).
+// Anything else in the account — hand-made snapshots, a bake's `candidate-` image mid-promotion,
+// a user's `oyren-user-…` Codespace snapshot, volume snapshots — is never a candidate.
 //
 // RUNNING IT: `DO_API_TOKEN=... node deploy/bake/pruneSnapshots.mjs --keep=2 --protect=<live ids>`
 // prints the plan and exits; add --apply to delete. The manual `Prune snapshots` workflow
@@ -18,13 +20,15 @@
 // is deleted at all without --apply. A snapshot in use by a RUNNING droplet is not at risk either
 // way — DO keeps the droplet's disk; the image is only needed to create new ones.
 
-/** Families the bake scripts produce, matched on the name prefix they hardcode. */
-export const FAMILIES = ["base", "zed", "lean"]
+/** Families the bake scripts produce (zed images predate the fold into base and still exist), plus
+ *  the retired twin of each: a rolled-back image is pruned against its own kind, never mixed in. */
+export const FAMILIES = ["base", "zed", "lean", "retired-base", "retired-zed", "retired-lean"]
 
-/** `oyren-sandbox-<family>-<anything>`; anything else is not ours and is never considered. */
+/** `oyren-sandbox-<family>-<anything>` → family; `retired-oyren-sandbox-<family>-…` →
+ *  `retired-<family>`; anything else is not ours and is never considered. */
 export function familyOf(name) {
-  const match = /^oyren-sandbox-(base|zed|lean)-/.exec(String(name || ""))
-  return match ? match[1] : null
+  const match = /^(retired-)?oyren-sandbox-(base|zed|lean)-/.exec(String(name || ""))
+  return match ? `${match[1] || ""}${match[2]}` : null
 }
 
 /**
@@ -71,8 +75,9 @@ async function doApi(path, { token, method = "GET" }) {
   return body
 }
 
-/** Every droplet snapshot in the account (paged — DO caps per_page at 200). */
-async function listSnapshots(token) {
+/** Every droplet snapshot in the account (paged — DO caps per_page at 200). Exported so
+ *  registerImage.mjs can find a promoted image by name without a second DigitalOcean client. */
+export async function listSnapshots(token) {
   const all = []
   for (let page = 1; page <= 20; page++) {
     const body = await doApi(`/snapshots?resource_type=droplet&per_page=200&page=${page}`, { token })
