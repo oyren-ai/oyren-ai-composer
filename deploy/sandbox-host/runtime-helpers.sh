@@ -75,6 +75,9 @@ install_runtime_units() {
   install -m 0644 "$here/../units/oyren-editor.service" /etc/systemd/system/oyren-editor.service
   # The tmux server's unit, pulled in by the drop-in so a runtime restart never kills the shells.
   install -m 0644 "$here/../units/oyren-tmux.service" /etc/systemd/system/oyren-tmux.service
+  # The layout-save pair the tmux unit Wants= (the timer) and the oneshot it fires.
+  install -m 0644 "$here/../units/oyren-tmux-save.service" /etc/systemd/system/oyren-tmux-save.service
+  install -m 0644 "$here/../units/oyren-tmux-save.timer" /etc/systemd/system/oyren-tmux-save.timer
   install -D -m 0644 "$here/../units/oyren-sandbox.service.d/20-tmux.conf" /etc/systemd/system/oyren-sandbox.service.d/20-tmux.conf
   # The welcome banner on interactive shells (guarded so a re-run doesn't append it twice).
   if ! grep -q OYREN_WELCOMED /etc/bash.bashrc 2>/dev/null; then

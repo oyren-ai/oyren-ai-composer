@@ -26,6 +26,8 @@
 Description=Oyren tmux server (the session's shells and agent)
 After=network-online.target
 ConditionPathExists=/etc/oyren/sandbox.env
+# The periodic layout save rides along; PartOf= on the timer stops it with this unit.
+Wants=oyren-tmux-save.timer
 
 [Service]
 # host.env is baked (PATH, PNPM_HOME, locale); sandbox.env is per-session from cloud-init and
@@ -34,6 +36,12 @@ ConditionPathExists=/etc/oyren/sandbox.env
 EnvironmentFile=/etc/oyren/host.env
 EnvironmentFile=/etc/oyren/sandbox.env
 ExecStart=/usr/local/lib/oyren/run-tmux-server.sh
+# Every start of this unit is a server that lost everything: first boot (nothing saved yet), a
+# crash-restart, a reboot, a snapshot resume. The `-` is load-bearing: a failed restore must never
+# take the server down. With Type=simple the unit stays `activating` until this returns, and the
+# 20-tmux.conf drop-in orders oyren-sandbox after it, so entrypoint.sh's `new-session -A -s main`
+# always runs into an already-restored server.
+ExecStartPost=-/usr/bin/node /usr/local/lib/oyren/tmux-state.mjs restore
 
 User=oyren
 WorkingDirectory=/workspace

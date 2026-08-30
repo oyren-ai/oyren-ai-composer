@@ -28,7 +28,7 @@ source "$HERE/runtime-helpers.sh"
 # The runtime's identity: a hash of the server plus the launchers and units in this directory,
 # computed the way the bake runner hashes a release, so `oyren update --check` can tell a changed
 # runtime from an unchanged one.
-HASH="$(cd "$HERE/../.." && tree_hash sandbox-runtime deploy/sandbox-host)"
+HASH="$(cd "$HERE/../.." && tree_hash sandbox-runtime deploy/sandbox-host deploy/units)"
 DEST="$RUNTIME_ROOT/$HASH"
 
 if [ "$(readlink "$APP_LINK" 2>/dev/null || true)" = "$DEST" ]; then
@@ -49,6 +49,10 @@ install_runtime_helpers "$APP_LINK"
 echo "==> Session launchers + systemd units"
 install_runtime_units "$HERE"
 systemctl daemon-reload
+# A live update lands the save timer in a session whose tmux server is already up; Wants= only acts
+# on the NEXT start of oyren-tmux, so start it now. At bake the server is not running and the
+# guard makes this a no-op.
+if systemctl is-active --quiet oyren-tmux 2>/dev/null; then systemctl start oyren-tmux-save.timer || true; fi
 # Enabled but inert: ConditionPathExists=/etc/oyren/sandbox.env means it no-ops during the bake and
 # only starts once cloud-init writes that file on a real session droplet.
 systemctl enable oyren-sandbox.service
