@@ -3,7 +3,7 @@ const assert = require("node:assert")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { checkpointRef, checkpointOnce, tickOnce, start, stop } = require("./gitCheckpoint")
+const { checkpointRef, checkpointOnce, tickOnce, start, stop, INTERVAL_MS } = require("./gitCheckpoint")
 
 const repoDir = () => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oyren-ckpt-")); fs.mkdirSync(path.join(dir, ".git")); return dir }
 const envFor = (workdir) => ({ WORKING_DIR: workdir, OYREN_SESSION_SLUG: "my-slug" })
@@ -205,13 +205,38 @@ test("each snapshot pass uses its OWN scratch index file (overlap-safe)", async 
   assert.notEqual(idx[0], idx[1])
 })
 
-test("start honors the disable flag + agent-runtimes-only gate; timer is unref'd and stoppable", () => {
+test("start honors the disable flag, runs for EVERY runtime, and stays idempotent", () => {
   assert.equal(start({ env: { AGENT_KIND: "claude-code", OYREN_CHECKPOINT_DISABLED: "1" } }), null)
-  assert.equal(start({ env: {} }), null) // not an agent runtime
-  const timer = start({ env: { AGENT_KIND: "claude-code" }, intervalMs: 60 * 60 * 1000 })
-  assert.ok(timer, "started for an agent runtime")
-  assert.equal(start({ env: { AGENT_KIND: "claude-code" } }), null) // idempotent while running
+  assert.equal(start({ env: { OYREN_CHECKPOINT_DISABLED: "1" } }), null)
+  // A plain Codespace checkpoints too: the 2026-08-30 incident found user-driven sessions had no
+  // safety net at all, because this used to bail without AGENT_KIND.
+  const plain = start({ env: {}, intervalMs: 60 * 60 * 1000 })
+  assert.ok(plain, "started for a session with no agent")
+  assert.equal(start({ env: {} }), null) // idempotent while running
   stop()
+  const timer = start({ env: { AGENT_KIND: "claude-code" }, intervalMs: 60 * 60 * 1000 })
+  assert.ok(timer, "still starts for an agent runtime")
+  stop()
+})
+
+test("the loss window is two minutes", () => {
+  assert.equal(INTERVAL_MS, 2 * 60 * 1000)
+})
+
+test("tickOnce reports agent meta only for agent runtimes; a plain session pays no GitHub call", async () => {
+  const spy = { calls: 0 }
+  const path = require.resolve("./agentMetaReport")
+  const hadCache = require.cache[path]
+  require.cache[path] = { id: path, filename: path, loaded: true, exports: { reportMeta: async () => { spy.calls += 1 } } }
+  try {
+    await tickOnce({ env: {}, exec: async () => ({ ok: true, out: "" }) })
+    assert.equal(spy.calls, 0, "no AGENT_KIND, no meta report")
+    await tickOnce({ env: { AGENT_KIND: "claude-code" }, exec: async () => ({ ok: true, out: "" }) })
+    assert.equal(spy.calls, 1, "agent runtimes still report meta")
+  } finally {
+    if (hadCache) require.cache[path] = hadCache
+    else delete require.cache[path]
+  }
 })
 
 test("start prefetches the stored agent meta so the first send awaits an already-resolved promise", async () => {
