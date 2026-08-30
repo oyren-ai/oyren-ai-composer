@@ -39,7 +39,9 @@ const mouseFor = (session) => tmux("display-message", "-t", session, "-p", "#{?m
 
 /** The command tmux registered for `prefix + m`, minus the display-message half. */
 const boundCommand = () => {
-  const line = tmux("list-keys", "-T", "prefix", "m")
+  // tmux 3.7 answers a key-filtered `list-keys -T prefix m` with nothing; list the whole table and
+  // pick the line ourselves, which every version renders the same way.
+  const line = tmux("list-keys", "-T", "prefix").split("\n").find((l) => / m\s+set-option/.test(l)) ?? ""
   const body = line.slice(line.indexOf(" m ") + 3)
   return body.split(" \\;")[0].trim().split(/\s+/)
 }
