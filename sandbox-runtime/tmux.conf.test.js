@@ -118,6 +118,7 @@ test("the resurrect options are resolved: capture contents, procfs strategy, nev
     assert.strictEqual(value(tmux, "-g", "@resurrect-capture-pane-contents"), "on")
     assert.strictEqual(value(tmux, "-g", "@resurrect-save-command-strategy"), "linux_procfs")
     assert.strictEqual(value(tmux, "-g", "@resurrect-never-overwrite"), "on")
+    assert.strictEqual(value(tmux, "-g", "@resurrect-delete-backup-after"), "7")
     assert.strictEqual(value(tmux, "-g", "@oyren-conf-loaded"), "1")
     assert.strictEqual(value(tmux, "-g", "@resurrect-dir"), "")
   })
