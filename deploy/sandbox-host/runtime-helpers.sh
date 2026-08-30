@@ -42,6 +42,15 @@ install_runtime_helpers() {
   printf '%s\n' '#!/bin/sh' 'exec bash /srv/composer/app/deploy/update/oyren-quiesce.sh "$@"' > /usr/local/bin/oyren-quiesce
   chmod 0755 /usr/local/bin/oyren-update /usr/local/bin/oyren-quiesce
   install -m 0644 "$app/tmux.conf" /etc/tmux.conf
+  # tmux-resurrect, vendored in the runtime tree (sandbox-runtime/tmux-plugins/VENDOR.md) and so
+  # pinned by the runtime hash. Copied, not linked: /app moves on every update, and the tmux server
+  # outlives any one runtime tree. The .new+mv shuffle keeps a mid-update reader off a half tree.
+  install -d -m 0755 /usr/local/lib/oyren
+  rm -rf /usr/local/lib/oyren/tmux-plugins.new
+  cp -a "$app/tmux-plugins" /usr/local/lib/oyren/tmux-plugins.new
+  chmod -R a+rX /usr/local/lib/oyren/tmux-plugins.new
+  rm -rf /usr/local/lib/oyren/tmux-plugins
+  mv /usr/local/lib/oyren/tmux-plugins.new /usr/local/lib/oyren/tmux-plugins
   chmod +x "$app/entrypoint.sh" "$app/agent-launch.sh" "$app/agent-term.sh" "$app/dsh-web.sh"
 }
 
