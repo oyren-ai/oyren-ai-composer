@@ -10,7 +10,8 @@
 const { execFile } = require("child_process")
 
 const TTL_MS = 10_000
-let last = { state: "unknown", at: 0 }
+// at: -Infinity, not 0: the first call must probe even under a test clock that starts at zero.
+let last = { state: "unknown", at: -Infinity }
 let probing = false
 
 const defaultExec = (cmd, args, cb) => execFile(cmd, args, { timeout: 3_000 }, cb)
@@ -18,6 +19,9 @@ const defaultExec = (cmd, args, cb) => execFile(cmd, args, { timeout: 3_000 }, c
 /** Last known unit state: "active" | "failed" | "inactive" | "absent" | "unknown". Kicks a
  *  background refresh when the value is older than TTL_MS. */
 function tmuxUnitState({ exec = defaultExec, now = Date.now } = {}) {
+  // Read BEFORE kicking the probe: with a synchronous exec (tests) the callback would otherwise
+  // land before the return, and "last known" would quietly become "just probed".
+  const current = last.state
   if (!probing && now() - last.at >= TTL_MS) {
     probing = true
     try {
@@ -34,10 +38,10 @@ function tmuxUnitState({ exec = defaultExec, now = Date.now } = {}) {
       last = { state: "absent", at: now() }
     }
   }
-  return last.state
+  return current
 }
 
 /** Test seam: forget the cached state between cases. */
-function __reset() { last = { state: "unknown", at: 0 }; probing = false }
+function __reset() { last = { state: "unknown", at: -Infinity }; probing = false }
 
 module.exports = { tmuxUnitState, __reset, TTL_MS }
