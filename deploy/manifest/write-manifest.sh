@@ -26,7 +26,7 @@ done
 [ -n "$VERSION" ] || { echo "ERROR: --version is required (the bake's UTC stamp, e.g. 2026-08-25-1838)" >&2; exit 2; }
 
 cd "$ROOT"
-RUNTIME_HASH="$(tree_hash sandbox-runtime deploy/sandbox-host)"
+RUNTIME_HASH="$(tree_hash sandbox-runtime deploy/sandbox-host deploy/units)"
 HOST_HASH="$(tree_hash deploy/sandbox-host/install-host.sh deploy/sandbox-host/install-workspace-dir.sh deploy/versions.env)"
 BROWSER_HASH="$(tree_hash deploy/browser)"
 LEAN="none"

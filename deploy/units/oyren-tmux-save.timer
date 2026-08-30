@@ -1,6 +1,6 @@
 # The two-minute cadence behind the layout saves: the staleness bound on what a dead server can
 # lose. Pulled in by Wants= from oyren-tmux.service and stopped with it (PartOf=), never enabled on
-# its own; there is no [Install] on purpose. Not tmux-continuum: its periodic save rides the status
+# its own, and deliberately without an install section. Not tmux-continuum: its periodic save rides the status
 # line, and this image runs `status off`.
 [Unit]
 Description=Save the tmux layout every 2 minutes while the session's server runs

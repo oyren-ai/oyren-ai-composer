@@ -34,7 +34,7 @@ test("the timer lives and dies with the server and never self-installs", () => {
   assert.match(TIMER, /^OnActiveSec=2min$/m)
   assert.match(TIMER, /^OnUnitActiveSec=2min$/m)
   assert.match(TIMER, /^Unit=oyren-tmux-save\.service$/m)
-  assert.doesNotMatch(TIMER, /\[Install\]/)
+  assert.doesNotMatch(TIMER, /^\[Install\]$/m)
 })
 
 test("the installers ship the pair, hash deploy/units, and start the timer on a live update", () => {
@@ -44,6 +44,8 @@ test("the installers ship the pair, hash deploy/units, and start the timer on a 
   const installer = readFileSync(join(HERE, "../sandbox-host/install-runtime.sh"), "utf8")
   assert.match(installer, /tree_hash sandbox-runtime deploy\/sandbox-host deploy\/units/)
   assert.match(installer, /systemctl start oyren-tmux-save\.timer/)
-  const release = readFileSync(join(HERE, "../bake/build-release.sh"), "utf8")
-  assert.match(release, /tree_hash sandbox-runtime deploy\/sandbox-host deploy\/units/, "a unit-only change must not be invisible to oyren update --check")
+  for (const rel of ["../bake/build-release.sh", "../manifest/write-manifest.sh"]) {
+    assert.match(readFileSync(join(HERE, rel), "utf8"), /tree_hash sandbox-runtime deploy\/sandbox-host deploy\/units/,
+      `${rel}: a unit-only change must not be invisible to oyren update --check`)
+  }
 })
