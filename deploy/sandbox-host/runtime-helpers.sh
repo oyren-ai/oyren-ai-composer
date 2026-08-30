@@ -77,4 +77,25 @@ install_runtime_units() {
     printf '%s\n' 'if [ -n "$PS1" ] && [ -z "${OYREN_WELCOMED:-}" ]; then export OYREN_WELCOMED=1; oyren-welcome; fi' \
       >> /etc/bash.bashrc
   fi
+  # Every command reaches ~/.bash_history the moment it runs, from every pane at once, so a tmux or
+  # droplet restart loses nothing that was typed (tmux-state.mjs is the layout half of that story).
+  # /etc/bash.bashrc, not profile.d: Ubuntu's /etc/profile sources it for login shells AND every
+  # non-login interactive shell (the editor's terminal) reads it directly. History stays in the
+  # same trust domain as the workspace disk it already shares.
+  if ! grep -q OYREN_HISTORY /etc/bash.bashrc 2>/dev/null; then
+    cat >> /etc/bash.bashrc <<'HIST'
+# OYREN_HISTORY: append per command so no pane's history is lost to a killed shell. Composes with
+# an existing PROMPT_COMMAND rather than replacing it (string form, as Ubuntu's skel uses).
+if [ -n "${BASH_VERSION:-}" ] && [ -n "${PS1:-}" ]; then
+  shopt -s histappend cmdhist
+  HISTCONTROL=ignoreboth
+  HISTTIMEFORMAT='%F %T '
+  case ";${PROMPT_COMMAND:-};" in *"history -a"*) ;; *) PROMPT_COMMAND="history -a${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;; esac
+fi
+HIST
+  fi
+  # Ubuntu's skel ~/.bashrc runs AFTER /etc/bash.bashrc and pins HISTSIZE=1000/HISTFILESIZE=2000,
+  # which would quietly cap the append-per-command story at a few hundred commands.
+  sed -i -E 's/^HISTSIZE=[0-9]+$/HISTSIZE=100000/; s/^HISTFILESIZE=[0-9]+$/HISTFILESIZE=200000/' \
+    "/home/${SANDBOX_USER:-oyren}/.bashrc" 2>/dev/null || true
 }
