@@ -4,6 +4,7 @@
 // script deploy/update/oyren-quiesce.sh through its /usr/local/bin shim.
 const { execFile } = require("child_process")
 const { requestControl } = require("./control")
+const { boundedCheckpoint } = require("./checkpoint")
 
 const QUIESCE_BIN = process.env.OYREN_QUIESCE_BIN || "/usr/local/bin/oyren-quiesce"
 
@@ -13,8 +14,13 @@ function run(cmd, args) {
   })
 }
 
-async function quiesceCommand(args, { stdout = (s) => process.stdout.write(s), exec = run, control = requestControl } = {}) {
+async function quiesceCommand(args, { stdout = (s) => process.stdout.write(s), exec = run, control = requestControl, checkpoint = boundedCheckpoint } = {}) {
   const json = args.includes("--json")
+  // The last git checkpoint while the shells are alive and the token helper still answers: the
+  // snapshot can be skipped (over the plan's cap) and the droplet deleted, and the shadow ref is
+  // the copy that survives that. Bounded well inside the orchestrator's quiesce budget; a failure
+  // here must never block the snapshot itself.
+  try { await checkpoint({ timeoutMs: 20_000 }) } catch { /* best effort */ }
   try { await control("stop", {}) } catch { /* no runtime to stop is fine before a snapshot */ }
   const r = await exec("sudo", ["-n", QUIESCE_BIN, ...(json ? ["--json"] : []), ...args.filter((a) => a !== "--json")])
   stdout(r.stdout)

@@ -29,6 +29,12 @@ disk_used() { df -k / 2>/dev/null | awk 'NR==2 { print $3 * 1024 }'; }
 disk_total() { df -k / 2>/dev/null | awk 'NR==2 { print $2 * 1024 }'; }
 
 USED_BEFORE="$(disk_used)"
+# The tmux layout first, while the server is still up. The blocking oneshot runs the same script,
+# user and env as the two-minute timer (tmux-state.mjs, which refuses an empty server), so the
+# snapshot carries exactly what the next boot of this droplet, or a clone of it, restores.
+if has systemctl && systemctl is-active --quiet oyren-tmux 2>/dev/null; then
+  run systemctl start oyren-tmux-save.service || true
+fi
 STOPPED=""
 for unit in oyren-tmux oyren-browser oyren-zed; do
   if has systemctl && systemctl is-active --quiet "$unit" 2>/dev/null; then
