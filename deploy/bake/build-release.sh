@@ -40,7 +40,7 @@ LEAN="none"
 node deploy/manifest/manifestCli.mjs build \
   --version "$VERSION" --family "$FAMILY" --composer-sha "$COMPOSER_SHA" \
   --versions-file deploy/versions.env \
-  --hash "runtime=$(tree_hash sandbox-runtime deploy/sandbox-host)" \
+  --hash "runtime=$(tree_hash sandbox-runtime deploy/sandbox-host deploy/units)" \
   --hash "host=$(tree_hash deploy/sandbox-host/install-host.sh deploy/sandbox-host/install-workspace-dir.sh deploy/versions.env)" \
   --hash "browser=$(tree_hash deploy/browser)" \
   --lean "$LEAN" --artifact "$TARBALL" > "$OUT/manifest.$FAMILY.json"

@@ -61,7 +61,9 @@ test("the mouse starts with tmux, so the browser wheel can reach scrollback", { 
 test("prefix + m hands the mouse back to the browser, and the status line says so", { skip: !haveTmux }, () => {
   withServer("oyren-conf-mouse-toggle", (tmux) => {
     const keys = tmux("list-keys", "-T", "prefix").stdout
-    assert.match(keys, /-T prefix m\s+set-option -g mouse/)
+    // 3.4 renders the valueless flip as `set-option -g mouse`, 3.5+ as `set-option mouse` (the
+    // binding itself is session-scoped on purpose; see the conf). Both mean the same toggle.
+    assert.match(keys, /-T prefix m\s+set-option (-g )?mouse/)
 
     assert.match(tmux("display", "-p", "#{?mouse,mouse:tmux,mouse:browser}").stdout, /mouse:tmux/)
     tmux("set", "-g", "mouse", "off")
@@ -105,4 +107,59 @@ test("scrollback outlives a chatty agent, and the session keeps the GitHub token
     assert.match(env, /GITHUB_TOKEN/)
     assert.match(env, /GH_TOKEN/)
   })
+})
+
+// ------------------------------------------------------------------ durability (tmux-resurrect)
+// The options behind save/restore, resolved by a real tmux. @resurrect-dir is deliberately ABSENT:
+// tmux-state.mjs sets it per session, and a value here would let a save land in another session's
+// directory on a resumed droplet.
+test("the resurrect options are resolved: capture contents, procfs strategy, never overwrite", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-resurrect", (tmux) => {
+    assert.strictEqual(value(tmux, "-g", "@resurrect-capture-pane-contents"), "on")
+    assert.strictEqual(value(tmux, "-g", "@resurrect-save-command-strategy"), "linux_procfs")
+    assert.strictEqual(value(tmux, "-g", "@resurrect-never-overwrite"), "on")
+    assert.strictEqual(value(tmux, "-g", "@resurrect-delete-backup-after"), "7")
+    assert.strictEqual(value(tmux, "-g", "@oyren-conf-loaded"), "1")
+    assert.strictEqual(value(tmux, "-g", "@resurrect-dir"), "")
+  })
+})
+
+test("process restore stays viewers-only: no rule may replay a dev server or an agent CLI", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-processes", (tmux) => {
+    const restore = value(tmux, "-g", "@resurrect-default-processes")
+    assert.match(restore, /vim/)
+    assert.doesNotMatch(restore, /\b(node|npm|pnpm|python|claude|codex)\b/)
+    assert.strictEqual(value(tmux, "-g", "@resurrect-processes"), "")
+  })
+})
+
+test("a client detach triggers a debounced save through tmux-state.mjs", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-detach-hook", (tmux) => {
+    const hooks = tmux("show-hooks", "-g").stdout
+    assert.match(hooks, /client-detached/)
+    assert.match(hooks, /tmux-state\.mjs save --hook/)
+  })
+})
+
+test("the vendored resurrect.tmux actually loads on this conf", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-plugin", (tmux) => {
+    const plugin = path.join(__dirname, "tmux-plugins", "tmux-resurrect", "resurrect.tmux")
+    const ran = tmux("run-shell", plugin)
+    assert.strictEqual(ran.status, 0, ran.stderr)
+    assert.notStrictEqual(value(tmux, "-g", "@resurrect-save-script-path"), "", "plugin left no save binding behind")
+  })
+})
+
+test("OSC 8 hyperlinks pass through tmux to the outer terminal", { skip: !haveTmux }, () => {
+  withServer("oyren-conf-hyperlinks", (tmux) => {
+    assert.match(tmux("show", "-g", "terminal-features").stdout, /hyperlinks/)
+  })
+})
+
+// The plugin load is guarded so a machine without the installed tree (tests, a stripped image)
+// still gets every option above instead of a hard parse failure.
+test("the plugin load line is guarded by an existence test", () => {
+  const text = require("fs").readFileSync(CONF, "utf8")
+  const line = text.split("\n").find((l) => l.includes("resurrect.tmux'"))
+  assert.match(line, /^if-shell 'test -r/)
 })

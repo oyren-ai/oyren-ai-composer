@@ -65,6 +65,22 @@ if [ "$VERSION_SEEN" != "$RELEASE_VERSION" ]; then
 fi
 echo "  health ok: $GOT"
 
+# Health proves the RUNTIME booted; it says nothing about the tmux unit, and a dead one is
+# invisible from outside (terminals fall back to an ad-hoc server in the runtime's cgroup). That is
+# how the `-D start-server` argv bug promoted and cost a user their panes: from now on the boot
+# also demands the unit ACTIVE with zero automatic restarts, or the candidate dies here.
+TMUX_STATE="$(ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes "root@$IP" \
+  'systemctl is-active oyren-tmux; systemctl show oyren-tmux -p NRestarts' 2>/dev/null || true)"
+if ! printf '%s' "$TMUX_STATE" | grep -qx "active" || ! printf '%s' "$TMUX_STATE" | grep -qx "NRestarts=0"; then
+  echo "ERROR: smoke boot of $IMAGE_ID failed: oyren-tmux is not quietly active (got: ${TMUX_STATE:-nothing})" >&2
+  ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes "root@$IP" \
+    'systemctl status oyren-tmux --no-pager | tail -n 10; journalctl -u oyren-tmux --no-pager | tail -n 20' 2>/dev/null || true
+  echo "▶ deleting failed candidate $IMAGE_ID"
+  delete_image "$IMAGE_ID"
+  exit 1
+fi
+echo "  oyren-tmux ok: active, NRestarts=0"
+
 echo "▶ promoting $IMAGE_ID → $FINAL_NAME"
 rename_image "$IMAGE_ID" "$FINAL_NAME" >/dev/null
 echo "✅ promoted: $FINAL_NAME (image id: $IMAGE_ID)"

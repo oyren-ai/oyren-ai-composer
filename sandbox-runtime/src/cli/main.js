@@ -19,7 +19,9 @@ const USAGE = `usage:
   oyren update [--force <component>] [--no-wait] [--json]
                                                apply the newest image in place; shells survive
   oyren update --status                        follow the last update
-  oyren quiesce [--json]                       stop the app and agent, trim the disk (before a snapshot)`
+  oyren quiesce [--json]                       stop the app and agent, trim the disk (before a snapshot)
+  oyren checkpoint [--json] [--quiet] [--timeout <s>]
+                                               push every repo's dirty work to the session's shadow ref now`
 
 async function main(argv) {
   const [cmd, ...rest] = argv
@@ -39,6 +41,8 @@ async function main(argv) {
       return require("./update").updateCommand(rest)
     case "quiesce":
       return require("./quiesce").quiesceCommand(rest)
+    case "checkpoint":
+      return require("./checkpoint").checkpointCommand(rest)
     default:
       console.error(USAGE)
       return 1

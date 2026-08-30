@@ -45,6 +45,13 @@ files for a droplet that asks (`POST /sandbox/release`, authenticated like `/san
 ## On the machine
 
 - `oyren version` prints the manifest.
+- `oyren checkpoint` pushes every repo's dirty/unpushed work to the session's shadow ref
+  (`refs/tags/oyren/checkpoint-<slug>`) right now; the runtime does the same pass every two minutes
+  for EVERY session, and `oyren quiesce` runs one more before a snapshot.
+- The tmux layout is saved every two minutes (`oyren-tmux-save.timer`) and on every client detach,
+  and restored by `oyren-tmux.service` on every server start, so panes, cwds and scrollback survive
+  crashes, reboots and snapshot resumes. `node /usr/local/lib/oyren/tmux-state.mjs status` says
+  where this session's saves live.
 - `oyren update --check` prints one line per changed component and exits 3 when there is something
   to apply.
 - `oyren update` asks the orchestrator for the latest release, hands the presigned URLs to the

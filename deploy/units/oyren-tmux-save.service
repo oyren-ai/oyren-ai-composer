@@ -1,0 +1,18 @@
+# One save of the tmux layout, through tmux-state.mjs (which refuses an empty server and locks
+# against overlapping runs). Fired by oyren-tmux-save.timer every two minutes, and once more,
+# blocking, by oyren-quiesce.sh right before it stops the server for the end-of-session snapshot.
+# Same user, same env files and same script as the restore, so the two always agree on the
+# per-session directory.
+[Unit]
+Description=Oyren tmux layout save
+After=oyren-tmux.service
+ConditionPathExists=/etc/oyren/sandbox.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/oyren/host.env
+EnvironmentFile=/etc/oyren/sandbox.env
+ExecStart=/usr/bin/node /usr/local/lib/oyren/tmux-state.mjs save
+User=oyren
+WorkingDirectory=/workspace
+Nice=10

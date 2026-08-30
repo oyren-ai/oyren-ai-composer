@@ -46,8 +46,8 @@ try { seedClaudeSettings() } catch (e) { console.error("seedClaudeSettings faile
 // `agent` never hang on tool prompts. Best-effort — never block boot.
 try { seedCursorSettings() } catch (e) { console.error("seedCursorSettings failed:", e && e.message) }
 
-// Auto-checkpoint the agent's dirty/unpushed work onto a GitHub shadow ref every few minutes, so a
-// container replacement never loses it (no-op unless an agent runtime with a repo; see gitCheckpoint.js).
+// Auto-checkpoint dirty/unpushed work onto a GitHub shadow ref every few minutes, so a machine
+// replacement never loses it. Every session with a cloned repo, agent or not; see gitCheckpoint.js.
 try { require("./gitCheckpoint").start() } catch (e) { console.error("gitCheckpoint failed to start:", e && e.message) }
 
 // Disconnect-survival broker for the native VS Code Chat panel's claude process — no-op unless

@@ -2,32 +2,53 @@
 #
 # Every shell a user opens and the agent's own pane live inside one tmux server. It used to be
 # born inside oyren-sandbox.service (entrypoint.sh created the agent session, or the first web
-# terminal did), so a restart of that unit — an in-place update, a crash-restart — killed the
-# whole cgroup: every shell, the running agent mid-turn, the dev server they had started. Owning
-# the server here means the runtime can restart freely and the web terminal simply re-attaches
-# (`tmux new-session -A -s main`, terminalSpawn.js) to processes that never stopped.
+# terminal did), so a restart of that unit killed the whole cgroup: every shell, the running agent
+# mid-turn, the dev server they had started. Owning the server here means the runtime can restart
+# freely and the web terminal simply re-attaches (`tmux new-session -A -s main`, terminalSpawn.js)
+# to processes that never stopped.
+#
+# HISTORY THAT MUST NOT REPEAT: from 2026-08-26 to 2026-08-30 this unit was dead on arrival. Its
+# launcher ran `tmux -u -D` WITH A TRAILING COMMAND, which every tmux refuses with usage(), so the
+# unit crash-looped ~every 2 s on every droplet while terminals silently fell back to an ad-hoc
+# server inside the runtime's cgroup, and a user lost all their panes when that server died.
+# run-tmux-server.sh + startTmux.test.mjs carry the details; the promote smoke boot now refuses an
+# image whose tmux unit is not ACTIVE.
 #
 # Pulled in by Wants= from oyren-sandbox.service (the 20-tmux.conf drop-in), never enabled on its
 # own, for the same reason as the editor: enabling at multi-user.target would race cloud-init's
-# write_files on /etc/oyren/sandbox.env. `-D` keeps the server in the foreground for systemd and
-# turns exit-empty off, so a server with no sessions stays up for the next attach.
+# write_files on /etc/oyren/sandbox.env. The wrapper execs `tmux -u -D`, so the server itself is
+# the unit's main process, in the foreground for systemd, with exit-empty off so a server with no
+# sessions stays up for the next attach.
 #
 # KillMode is the default control-group on purpose: stopping THIS unit (session end, quiesce) is
-# exactly when every shell should die. Nothing else ever restarts it — lib/restart.sh skips it.
+# exactly when every shell should die. Nothing else ever restarts it; lib/restart.sh skips it.
 [Unit]
 Description=Oyren tmux server (the session's shells and agent)
 After=network-online.target
 ConditionPathExists=/etc/oyren/sandbox.env
+# The periodic layout save rides along; PartOf= on the timer stops it with this unit.
+Wants=oyren-tmux-save.timer
 
 [Service]
 # host.env is baked (PATH, PNPM_HOME, locale); sandbox.env is per-session from cloud-init and
-# carries CONTAINER_ENV_B64, which the launcher decodes so every pane inherits the session env.
+# carries CONTAINER_ENV_B64, which the wrapper decodes through start-tmux.mjs --export-env so every
+# pane inherits the session env without a secret ever touching a file.
 EnvironmentFile=/etc/oyren/host.env
 EnvironmentFile=/etc/oyren/sandbox.env
-ExecStart=/usr/bin/node /usr/local/lib/oyren/start-tmux.mjs
+ExecStart=/usr/local/lib/oyren/run-tmux-server.sh
+# Every start of this unit is a server that lost everything: first boot (nothing saved yet), a
+# crash-restart, a reboot, a snapshot resume. The `-` is load-bearing: a failed restore must never
+# take the server down. With Type=simple the unit stays `activating` until this returns, and the
+# 20-tmux.conf drop-in orders oyren-sandbox after it, so entrypoint.sh's `new-session -A -s main`
+# always runs into an already-restored server.
+ExecStartPost=-/usr/bin/node /usr/local/lib/oyren/tmux-state.mjs restore
 
 User=oyren
 WorkingDirectory=/workspace
+
+# The panes are the last thing the kernel should reclaim: user work lives here, the runtime and
+# editors all know how to come back.
+OOMScoreAdjust=-500
 
 Restart=on-failure
 RestartSec=2

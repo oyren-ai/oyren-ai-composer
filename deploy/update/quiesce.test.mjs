@@ -1,6 +1,7 @@
-// The quiesce is what runs right before a snapshot, so what matters is the plan: the tmux server
-// goes down first (every shell and the agent), caches under /root and /var go, nothing under /home
-// is named, and `cloud-init clean` is the very last thing. --dry-run prints exactly that plan.
+// The quiesce is what runs right before a snapshot, so what matters is the plan: the tmux layout
+// is SAVED while the server is still up, then the server goes down (every shell and the agent),
+// caches under /root and /var go, nothing under /home is named, and `cloud-init clean` is the very
+// last thing. --dry-run prints exactly that plan.
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
@@ -28,7 +29,8 @@ test("--dry-run --json prints the plan and a JSON summary that says nothing was 
   assert.equal(summary.dryRun, true)
   assert.equal(typeof summary.diskUsedBytes, "number")
   const plan = r.stderr.split("\n").filter((l) => l.startsWith("would: "))
-  assert.equal(plan[0], "would: systemctl stop oyren-tmux", "the shells go first")
+  assert.equal(plan[0], "would: systemctl start oyren-tmux-save.service", "the layout is saved while the server is up")
+  assert.equal(plan[1], "would: systemctl stop oyren-tmux", "then the shells go")
   assert.equal(plan[plan.length - 1], "would: cloud-init clean --logs", "cloud-init clean is last")
   assert.ok(plan.some((l) => l.includes("rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache")))
   assert.ok(plan.some((l) => l.includes("rm -f /etc/oyren/editor-surface")))

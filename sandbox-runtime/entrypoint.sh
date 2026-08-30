@@ -76,6 +76,13 @@ if systemctl is-active --quiet oyren-tmux 2>/dev/null; then
   tmux set-environment -g WORKDIR "${WORKDIR:-$WORKSPACE}" 2>/dev/null || true
   tmux set-environment -g WORKING_DIR "${WORKING_DIR:-$WORKSPACE}" 2>/dev/null || true
   tmux set-environment -g NODE_OPTIONS "$NODE_OPTIONS" 2>/dev/null || true
+  # Remember what only this script can compute (values arrive after the clone), for the restore
+  # that runs when the SERVER restarts without us: tmux-state.mjs re-seeds these globals and puts
+  # the agent back into main:0.0 at WORKING_DIR.
+  if [ -f /usr/local/lib/oyren/tmux-state.mjs ]; then
+    WORKDIR="${WORKDIR:-$WORKSPACE}" WORKING_DIR="${WORKING_DIR:-$WORKSPACE}" \
+      node /usr/local/lib/oyren/tmux-state.mjs remember 2>/dev/null || true
+  fi
 fi
 
 # Agent launch: when the orchestrator requested a CLI agent, pre-create the tmux "main" session running

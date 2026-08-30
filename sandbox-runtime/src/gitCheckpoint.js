@@ -1,8 +1,8 @@
-// Auto-checkpoint: every ~4 minutes, snapshot each repo's dirty/unpushed work onto the session's
-// shadow ref (refs/tags/oyren/checkpoint-<slug>) with a force-push — the safety net that survives a
-// container replacement (OOM / DO recycle) wiping the ephemeral filesystem. EVERY cloned repo is
-// covered (multi-repo launches push the same ref name to each repo's own origin); the actual pass
-// lives in checkpointRepo.js. Push auth rides the existing `oyren` git credential helper (fresh
+// Auto-checkpoint: every ~2 minutes, snapshot each repo's dirty/unpushed work onto the session's
+// shadow ref (refs/tags/oyren/checkpoint-<slug>) with a force-push, the safety net that survives a
+// machine replacement wiping the filesystem. EVERY session with a cloned repo is covered, agent or
+// not (the credential helper needs only the session tokens), and multi-repo launches push the same
+// ref name to each repo's own origin; the actual pass lives in checkpointRepo.js. Push auth rides the existing `oyren` git credential helper (fresh
 // /sandbox/git-token per push) — no token handling here. After each pass the tick also reports the
 // agent-meta blob (agentMetaReport.js) — best-effort, a meta failure never affects checkpointing.
 // Every git failure is swallowed + logged; a checkpoint must never crash or block the server.
@@ -13,7 +13,7 @@ const { findGitRepoDirs, workdirFrom } = require("./workspaceRepo")
 const { checkpointRef } = require("./checkpointRef")
 const { checkpointRepoOnce } = require("./checkpointRepo")
 
-const INTERVAL_MS = 4 * 60 * 1000
+const INTERVAL_MS = 2 * 60 * 1000
 
 // Run one git command, never throwing: resolve { ok, out } whatever happens (test seam: `exec`).
 // `opts.input` feeds stdin (hash-object --stdin); the 60s timeout kills a hung git (a stalled push)
@@ -51,19 +51,22 @@ async function tickOnce({ env = process.env, exec = defaultExec, report } = {}) 
         if (outcome !== "clean" && outcome !== "unchanged") console.error(`[checkpoint] ${path.basename(dir)}: ${outcome}`)
       }
     } catch (e) { console.error(`[checkpoint] failed: ${String((e && e.message) || e)}`) }
-    try { await (report || require("./agentMetaReport").reportMeta)({ env }) } catch { /* meta is best-effort, never blocks checkpoints */ }
+    // Meta (gh pr view per repo, agent auth probes) is agent machinery, not checkpoint machinery:
+    // a plain Codespace checkpoints without paying a GitHub API call per tick.
+    if (env.AGENT_KIND || report) { try { await (report || require("./agentMetaReport").reportMeta)({ env }) } catch { /* meta is best-effort, never blocks checkpoints */ } }
     return results
   } finally { inFlight = false }
 }
 
 let timer = null
 
-/** Start the interval (unref'd — never keeps the process alive). Agent runtimes only; idempotent. */
+/** Start the interval (unref'd, never keeps the process alive). Every runtime; idempotent. */
 function start({ env = process.env, intervalMs = INTERVAL_MS } = {}) {
-  if (timer || env.OYREN_CHECKPOINT_DISABLED === "1" || !env.AGENT_KIND) return null
+  if (timer || env.OYREN_CHECKPOINT_DISABLED === "1") return null
   // Kick the cached agent-meta fetch NOW (single-flight, bounded timeout) so the first send()'s
   // blank-boot recovery check awaits an already-resolved promise instead of stalling the turn.
-  try { require("./agentMeta").loadStoredMeta({ env }) } catch { /* prefetch is best-effort */ }
+  // Agent runtimes only: a plain Codespace has no meta to fetch and no turn to unblock.
+  if (env.AGENT_KIND) { try { require("./agentMeta").loadStoredMeta({ env }) } catch { /* prefetch is best-effort */ } }
   timer = setInterval(() => { tickOnce({ env }) }, intervalMs)
   if (timer.unref) timer.unref()
   return timer
