@@ -57,6 +57,7 @@ install_runtime_units() {
   install -m 0755 "$here/start-sandbox.mjs" /usr/local/lib/oyren/start-sandbox.mjs
   install -m 0755 "$here/start-editor.mjs" /usr/local/lib/oyren/start-editor.mjs
   install -m 0755 "$here/start-tmux.mjs" /usr/local/lib/oyren/start-tmux.mjs
+  install -m 0755 "$here/run-tmux-server.sh" /usr/local/lib/oyren/run-tmux-server.sh
   install -m 0644 "$here/../units/oyren-sandbox.service" /etc/systemd/system/oyren-sandbox.service
   install -m 0644 "$here/../units/oyren-editor.service" /etc/systemd/system/oyren-editor.service
   # The tmux server's unit, pulled in by the drop-in so a runtime restart never kills the shells.
