@@ -5,6 +5,7 @@
 // server.js does the SESSION_TOKEN check before upgrading.
 const { spawnTerminal } = require("./terminalSpawn")
 const { writePastedImage } = require("./terminalImagePaste")
+const { tmuxUnitState } = require("./tmuxUnit")
 
 /**
  * Build a noServer WebSocketServer wired to spawn a PTY per connection, with keepalive. The two
@@ -17,6 +18,12 @@ function setupTerminal(workdir, { spawn, WebSocketServer, env = process.env } = 
   const wss = new Wss({ noServer: true })
 
   wss.on("connection", (ws, _req, { shell = "tmux" } = {}) => {
+    // A tmux attach with the unit down silently births an ad-hoc server in THIS process's cgroup,
+    // where a runtime restart kills every pane (the 2026-08-30 incident). Say so where an operator
+    // will look; health carries the same fact as `tmuxUnit`.
+    const unit = shell === "plain" ? "active" : tmuxUnitState()
+    if (unit !== "active" && unit !== "absent" && unit !== "unknown")
+      console.error(`[terminal] oyren-tmux unit is ${unit}: panes will live in an AD-HOC server that dies with this runtime`)
     const term = spawnTerminal(spawnPty, { shell, workdir, env })
     term.onData((data) => { try { ws.send(data) } catch {} })
     term.onExit(() => { try { ws.close() } catch {} })
