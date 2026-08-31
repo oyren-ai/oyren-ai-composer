@@ -63,4 +63,5 @@ if [ -n "$token" ]; then
   export GITHUB_TOKEN="$token"
 fi
 
-exec /usr/bin/gh "$@"
+# GH_WRAPPER_REAL_GH lets tests point this at a stub instead of the real binary; unset in production.
+exec "${GH_WRAPPER_REAL_GH:-/usr/bin/gh}" "$@"
