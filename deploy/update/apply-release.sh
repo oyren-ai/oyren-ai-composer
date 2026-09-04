@@ -63,12 +63,19 @@ for c in $TODO; do
 done
 APPLIED="${APPLIED# }"
 
-# The new tree becomes the installed tree. This script keeps running (bash holds its file open).
+# The new tree becomes the installed tree. This script keeps running (bash holds its file open),
+# but the paths below were resolved against $NEW_ROOT, which the move just made disappear. Re-point
+# them at the installed tree or the final version flip and the "done" status silently no-op: the
+# runtime still lands, but the manifest keeps its old version and the status file stays "running".
 if [ "$NEW_ROOT" = "$ROOT.new" ]; then
   rm -rf "$ROOT.prev"
   mv -T "$ROOT" "$ROOT.prev" 2>/dev/null || mv "$ROOT" "$ROOT.prev"
   mv -T "$NEW_ROOT" "$ROOT" 2>/dev/null || mv "$NEW_ROOT" "$ROOT"
   log "installed tree is now $ROOT (previous kept at $ROOT.prev)"
+  NEW_ROOT="$ROOT"
+  TARGET="$ROOT/deploy/manifest/target.json"
+  CLI="$ROOT/deploy/manifest/manifestCli.mjs"
+  STATUS_MJS="$ROOT/deploy/update/updateStatus.mjs"
 fi
 
 status_write running restarting --applied "$(echo "$APPLIED" | tr ' ' ',')"
