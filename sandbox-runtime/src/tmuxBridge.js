@@ -23,7 +23,11 @@ const { tmuxUnitState } = require("./tmuxUnit")
 const LIST_FORMAT = ["#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}", "#{pane_current_command}", "#{pane_current_path}", "#{pane_title}"].join("\t")
 
 // Commands/titles that mark a pane as "probably an agent CLI, not a bare shell/build/editor".
+// The name match alone misses real agents: Claude Code launched via the pnpm shim shows
+// pane_current_command "sh" and no CLI name anywhere — but it stamps its pane title with a
+// leading "✳", which is exactly the signal a human uses to spot agent panes in the tab bar.
 const AGENT_RE = /\b(claude|codex|opencode|gemini|dsh)\b/i
+const isLikelyAgent = (command, title) => AGENT_RE.test(command) || AGENT_RE.test(title) || title.startsWith("✳")
 
 const MAX_LINES = 5000
 const DEFAULT_LINES = 200
@@ -78,7 +82,7 @@ async function listPanes() {
         command,
         cwd,
         title,
-        likelyAgent: AGENT_RE.test(command) || AGENT_RE.test(title),
+        likelyAgent: isLikelyAgent(command, title),
         // v1: every pane is raw-terminal. "structured" arrives when panes advertise a transport.
         mode: "tty",
       }

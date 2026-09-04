@@ -11,8 +11,9 @@ const { handleTmuxBridge, redactSecrets, __setExec } = require("./tmuxBridge")
 const T = "\t"
 const LIST_LINES = [
   ["main", "0", "0", "%0", "bash", "/w", "shell"].join(T),
-  ["main", "5", "1", "%12", "node", "/w/repo", "✳ claude worker"].join(T),
+  ["main", "5", "1", "%12", "node", "/w/repo", "claude worker"].join(T),
   ["main", "5", "2", "%13", "claude", "/w/repo", "OYR-0042 fix" + T + "tabbed"].join(T),
+  ["main", "6", "0", "%14", "sh", "/w/repo", "✳ OYR-0042 collapse nextDb"].join(T), // pnpm-shim Claude Code: only the ✳ gives it away
 ].join("\n") + "\n"
 
 /** Recording exec: every tmux argv lands in calls; responses come from the byCmd map (keyed on
@@ -52,6 +53,7 @@ test("GET /tmux/panes: exact tmux argv, normalized records, likelyAgent from com
   assert.equal(body.panes[1].target, "main:5.1")
   assert.equal(body.panes[2].likelyAgent, true) // "claude" as the command itself
   assert.equal(body.panes[2].title, "OYR-0042 fix" + T + "tabbed") // a tab inside the title survives
+  assert.equal(body.panes[3].likelyAgent, true) // command "sh", no CLI name — the ✳ title marker decides
 })
 
 test("GET /tmux/panes: tmux failure is 503 with the unit state surfaced", async () => {
