@@ -1,6 +1,7 @@
 // Pure request-dispatch decisions, keyed only on the URL path so they're trivially unit-testable.
 // Reserved namespaces: `/_oyren/*` (platform-internal: health + control) never collide with a
-// user's app, and `/how-to-deploy` + `/terminal` + `/agent/message` are the user-facing reserved paths.
+// user's app, and `/how-to-deploy` + `/terminal` + `/agent/message` + `/tmux` are the user-facing
+// reserved paths.
 
 function pathOf(rawUrl) {
   return (rawUrl || "/").split("?")[0]
@@ -39,6 +40,9 @@ function routeFor(rawUrl) {
   if (isUnder(path, "/agent/models")) return { kind: "agent-models" }
   if (isUnder(path, "/agent/model")) return { kind: "agent-model" }
   if (isUnder(path, "/agent/message")) return { kind: "agent" }
+  // The tmux bridge (tmuxBridge.js) — one kind for the whole prefix; the handler dispatches
+  // /tmux/panes[/:id/(screen|input)] itself, since routeFor stays parameter-free.
+  if (isUnder(path, "/tmux")) return { kind: "tmux" }
   if (isUnder(path, "/how-to-deploy")) return { kind: "static" }
   return { kind: "app" }
 }
