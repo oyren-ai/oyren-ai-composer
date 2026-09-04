@@ -283,6 +283,19 @@ test("target: --repo flag beats GH_REPO", async () => {
   }
 })
 
+test("target: a repo name with JSON-hostile characters never reaches the mint body — mint is unscoped", async () => {
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, os.tmpdir(), [
+      "pr", "view", "-R", 'oyren-ai/we"ird\\repo',
+    ])
+    assert.ok(!bodyOf().includes("repoFullName"), `expected no repoFullName, got: ${bodyOf()}`)
+    assert.ok(bodyOf().length > 0, "the mint request itself still goes out, just unscoped")
+  } finally {
+    srv.close()
+  }
+})
+
 test("target: a non-github.com --repo does NOT fall through to the cwd repo — mint is unscoped", async () => {
   const repo = makeRepo("https://github.com/oyren-ai/oyren-ai-composer.git")
   const { srv, bodyOf } = await mintServer()

@@ -78,6 +78,11 @@ else
   _repo_name="$(_normalize_repo "$(/usr/bin/git remote get-url origin 2>/dev/null || true)")"
 fi
 
+# The name is spliced into a JSON body below, so pin it to GitHub's actual owner/repo alphabet —
+# a quote or backslash that survived normalization (typo'd --repo, hostile remote URL) would
+# otherwise make a malformed mint body that fails opaquely and falls through to a stale token.
+[[ "$_repo_name" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || _repo_name=""
+
 # 1. Fresh token from the orchestrator. Retried for the same reason as git-credential-oyren.sh:
 #    past the first hour the fallback token is expired, so a single transient failure here surfaces
 #    as an unexplained 403 rather than as the connectivity problem it actually is.
