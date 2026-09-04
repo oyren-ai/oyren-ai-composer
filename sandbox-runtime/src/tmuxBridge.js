@@ -22,8 +22,15 @@ const { tmuxUnitState } = require("./tmuxUnit")
 
 // One line per pane, real tab separated (JS "\t" is a literal tab byte in the argv — tmux formats
 // have no escape syntax). pane_title is LAST: it is the only field that can itself contain a tab,
-// so the parser can fold the remainder back into it.
-const LIST_FORMAT = ["#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}", "#{pane_current_command}", "#{pane_current_path}", "#{pane_title}"].join("\t")
+// so the parser can fold the remainder back into it. The geometry fields let a tile view size
+// itself from the pane's REAL character grid (width x height x cell size) instead of resizing the
+// pane — sizing the tile from the pane is what keeps the live session untouched.
+const LIST_FORMAT = [
+  "#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}",
+  "#{pane_current_command}", "#{pane_current_path}",
+  "#{pane_width}", "#{pane_height}", "#{pane_active}", "#{window_zoomed_flag}",
+  "#{pane_title}",
+].join("\t")
 
 // Commands/titles that mark a pane as "probably an agent CLI, not a bare shell/build/editor".
 // The name match alone misses real agents: Claude Code launched via the pnpm shim shows
@@ -81,7 +88,7 @@ async function listPanes() {
     .split("\n")
     .filter((l) => l.length)
     .map((line) => {
-      const [session, win, paneIdx, id, command, cwd, ...titleParts] = line.split("\t")
+      const [session, win, paneIdx, id, command, cwd, width, height, active, zoomed, ...titleParts] = line.split("\t")
       const title = titleParts.join("\t")
       return {
         id,
@@ -89,6 +96,11 @@ async function listPanes() {
         command,
         cwd,
         title,
+        // Character grid, not pixels — the consumer multiplies by its own cell size.
+        width: Number(width) || 0,
+        height: Number(height) || 0,
+        active: active === "1",
+        zoomed: zoomed === "1",
         likelyAgent: isLikelyAgent(command, title),
         // v1: every pane is raw-terminal. "structured" arrives when panes advertise a transport.
         mode: "tty",

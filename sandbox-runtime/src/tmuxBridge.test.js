@@ -9,11 +9,12 @@ const { drive } = require("./agentFakes")
 const { handleTmuxBridge, redactSecrets, __setExec } = require("./tmuxBridge")
 
 const T = "\t"
+// session, window, paneIdx, id, command, cwd, width, height, active, zoomed, title
 const LIST_LINES = [
-  ["main", "0", "0", "%0", "bash", "/w", "shell"].join(T),
-  ["main", "5", "1", "%12", "node", "/w/repo", "claude worker"].join(T),
-  ["main", "5", "2", "%13", "claude", "/w/repo", "OYR-0042 fix" + T + "tabbed"].join(T),
-  ["main", "6", "0", "%14", "sh", "/w/repo", "✳ OYR-0042 collapse nextDb"].join(T), // pnpm-shim Claude Code: only the ✳ gives it away
+  ["main", "0", "0", "%0", "bash", "/w", "80", "24", "1", "0", "shell"].join(T),
+  ["main", "5", "1", "%12", "node", "/w/repo", "120", "40", "0", "0", "claude worker"].join(T),
+  ["main", "5", "2", "%13", "claude", "/w/repo", "200", "50", "0", "1", "OYR-0042 fix" + T + "tabbed"].join(T),
+  ["main", "6", "0", "%14", "sh", "/w/repo", "80", "24", "0", "0", "✳ OYR-0042 collapse nextDb"].join(T), // pnpm-shim Claude Code: only the ✳ gives it away
 ].join("\n") + "\n"
 
 /** Recording exec: every tmux argv lands in calls; responses come from the byCmd map (keyed on
@@ -45,15 +46,55 @@ test("GET /tmux/panes: exact tmux argv, normalized records, likelyAgent from com
   const calls = fakeExec({ "list-panes": LIST_LINES })
   const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
   assert.equal(res.status, 200)
-  assert.deepEqual(calls, [["list-panes", "-a", "-F", ["#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}", "#{pane_current_command}", "#{pane_current_path}", "#{pane_title}"].join(T)]])
+  assert.deepEqual(calls, [["list-panes", "-a", "-F", [
+    "#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}",
+    "#{pane_current_command}", "#{pane_current_path}",
+    "#{pane_width}", "#{pane_height}", "#{pane_active}", "#{window_zoomed_flag}",
+    "#{pane_title}",
+  ].join(T)]])
   const body = JSON.parse(res.body())
   assert.ok("unit" in body)
-  assert.deepEqual(body.panes[0], { id: "%0", target: "main:0.0", command: "bash", cwd: "/w", title: "shell", likelyAgent: false, mode: "tty" })
+  assert.deepEqual(body.panes[0], {
+    id: "%0", target: "main:0.0", command: "bash", cwd: "/w", title: "shell",
+    width: 80, height: 24, active: true, zoomed: false, likelyAgent: false, mode: "tty",
+  })
   assert.equal(body.panes[1].likelyAgent, true) // "claude" in the title, command is just node
   assert.equal(body.panes[1].target, "main:5.1")
   assert.equal(body.panes[2].likelyAgent, true) // "claude" as the command itself
   assert.equal(body.panes[2].title, "OYR-0042 fix" + T + "tabbed") // a tab inside the title survives
   assert.equal(body.panes[3].likelyAgent, true) // command "sh", no CLI name — the ✳ title marker decides
+})
+
+test("pane geometry: the character grid, active and zoomed flags ride on every record", async () => {
+  fakeExec({ "list-panes": LIST_LINES })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
+  const { panes } = JSON.parse(res.body())
+  assert.deepEqual(panes.map((p) => [p.width, p.height]), [[80, 24], [120, 40], [200, 50], [80, 24]])
+  assert.deepEqual(panes.map((p) => p.active), [true, false, false, false])
+  assert.deepEqual(panes.map((p) => p.zoomed), [false, false, true, false])
+})
+
+test("pane geometry: a tab in the title never shifts the geometry fields (title stays last)", async () => {
+  fakeExec({ "list-panes": LIST_LINES })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
+  const tabbed = JSON.parse(res.body()).panes[2]
+  assert.equal(tabbed.title, "OYR-0042 fix" + T + "tabbed")
+  assert.deepEqual([tabbed.width, tabbed.height, tabbed.zoomed], [200, 50, true])
+})
+
+test("pane geometry: unparseable dimensions degrade to 0 rather than NaN in the JSON", async () => {
+  fakeExec({ "list-panes": ["main", "0", "0", "%0", "bash", "/w", "", "oops", "", "", "t"].join(T) + "\n" })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
+  const p = JSON.parse(res.body()).panes[0]
+  assert.deepEqual([p.width, p.height], [0, 0]) // JSON has no NaN — a consumer would get null and break its layout
+  assert.deepEqual([p.active, p.zoomed], [false, false])
+})
+
+test("pane geometry rides on the single-pane detail view too", async () => {
+  fakeExec({ "list-panes": LIST_LINES, "capture-pane": "hi\n" })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512?token=tok" })
+  const { pane } = JSON.parse(res.body())
+  assert.deepEqual([pane.width, pane.height, pane.active, pane.zoomed], [120, 40, false, false])
 })
 
 test("GET /tmux/panes: tmux failure is 503 with the unit state surfaced", async () => {
