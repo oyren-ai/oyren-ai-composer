@@ -187,4 +187,17 @@ describe("readRunLog", () => {
     const content = readRunLog(tmpDir, "run-doesnotexist")
     assert.equal(content, null)
   })
+
+  test("a traversing runId reads nothing — the id is pinned to the minted shape", () => {
+    // Planted where "../../<x>.log" would land if the id were joined unchecked.
+    const outside = path.join(path.dirname(tmpDir), "pwned.log")
+    fs.writeFileSync(outside, "OUTSIDE THE WORKDIR")
+    try {
+      for (const id of ["../../pwned", "../pwned", "../../../../etc/passwd", "run-abc/../../pwned", "/etc/passwd"]) {
+        assert.equal(readRunLog(tmpDir, id), null, id)
+      }
+    } finally {
+      fs.rmSync(outside, { force: true })
+    }
+  })
 })

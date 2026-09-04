@@ -132,9 +132,12 @@ function listRunLogs(workdir) {
 }
 
 /**
- * Read a specific log file's contents.
+ * Read a specific log file's contents. `runId` is caller-supplied (it arrives in a request body),
+ * so it is pinned to the shape runStreaming actually mints — a traversing id like
+ * "../../../../etc/passwd" would otherwise read /etc/passwd.log straight off the host.
  */
 function readRunLog(workdir, runId) {
+  if (!/^run-[0-9a-f]+$/.test(String(runId))) return null
   const logPath = path.join(workdir, ".oyren-deliver", `${runId}.log`)
   try {
     return fs.readFileSync(logPath, "utf-8")
