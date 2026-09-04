@@ -6,15 +6,17 @@ process.env.SESSION_TOKEN = "tok" // config reads this at require-time
 const { test } = require("node:test")
 const assert = require("node:assert/strict")
 const { drive } = require("./agentFakes")
-const { handleTmuxBridge, redactSecrets, __setExec } = require("./tmuxBridge")
+const { handleTmuxBridge, redactSecrets, safeEndpoint, __setExec, __setPost } = require("./tmuxBridge")
 
 const T = "\t"
-// session, window, paneIdx, id, command, cwd, width, height, active, zoomed, title
+// session, window, paneIdx, id, command, cwd, width, height, active, zoomed, endpoint, title
 const LIST_LINES = [
-  ["main", "0", "0", "%0", "bash", "/w", "80", "24", "1", "0", "shell"].join(T),
-  ["main", "5", "1", "%12", "node", "/w/repo", "120", "40", "0", "0", "claude worker"].join(T),
-  ["main", "5", "2", "%13", "claude", "/w/repo", "200", "50", "0", "1", "OYR-0042 fix" + T + "tabbed"].join(T),
-  ["main", "6", "0", "%14", "sh", "/w/repo", "80", "24", "0", "0", "✳ OYR-0042 collapse nextDb"].join(T), // pnpm-shim Claude Code: only the ✳ gives it away
+  ["main", "0", "0", "%0", "bash", "/w", "80", "24", "1", "0", "", "shell"].join(T),
+  ["main", "5", "1", "%12", "node", "/w/repo", "120", "40", "0", "0", "", "claude worker"].join(T),
+  ["main", "5", "2", "%13", "claude", "/w/repo", "200", "50", "0", "1", "", "OYR-0042 fix" + T + "tabbed"].join(T),
+  ["main", "6", "0", "%14", "sh", "/w/repo", "80", "24", "0", "0", "", "✳ OYR-0042 collapse nextDb"].join(T), // pnpm-shim Claude Code: only the ✳ gives it away
+  // %20 advertised a transport: mode "structured", and input routes to it instead of send-keys.
+  ["main", "7", "0", "%20", "node", "/w/repo", "80", "24", "0", "0", "http://127.0.0.1:8123/msg", "adapter agent"].join(T),
 ].join("\n") + "\n"
 
 /** Recording exec: every tmux argv lands in calls; responses come from the byCmd map (keyed on
@@ -50,6 +52,7 @@ test("GET /tmux/panes: exact tmux argv, normalized records, likelyAgent from com
     "#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}",
     "#{pane_current_command}", "#{pane_current_path}",
     "#{pane_width}", "#{pane_height}", "#{pane_active}", "#{window_zoomed_flag}",
+    "#{@oyren_agent_endpoint}",
     "#{pane_title}",
   ].join(T)]])
   const body = JSON.parse(res.body())
@@ -69,9 +72,9 @@ test("pane geometry: the character grid, active and zoomed flags ride on every r
   fakeExec({ "list-panes": LIST_LINES })
   const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
   const { panes } = JSON.parse(res.body())
-  assert.deepEqual(panes.map((p) => [p.width, p.height]), [[80, 24], [120, 40], [200, 50], [80, 24]])
-  assert.deepEqual(panes.map((p) => p.active), [true, false, false, false])
-  assert.deepEqual(panes.map((p) => p.zoomed), [false, false, true, false])
+  assert.deepEqual(panes.map((p) => [p.width, p.height]), [[80, 24], [120, 40], [200, 50], [80, 24], [80, 24]])
+  assert.deepEqual(panes.map((p) => p.active), [true, false, false, false, false])
+  assert.deepEqual(panes.map((p) => p.zoomed), [false, false, true, false, false])
 })
 
 test("pane geometry: a tab in the title never shifts the geometry fields (title stays last)", async () => {
@@ -83,7 +86,7 @@ test("pane geometry: a tab in the title never shifts the geometry fields (title 
 })
 
 test("pane geometry: unparseable dimensions degrade to 0 rather than NaN in the JSON", async () => {
-  fakeExec({ "list-panes": ["main", "0", "0", "%0", "bash", "/w", "", "oops", "", "", "t"].join(T) + "\n" })
+  fakeExec({ "list-panes": ["main", "0", "0", "%0", "bash", "/w", "", "oops", "", "", "", "t"].join(T) + "\n" })
   const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })
   const p = JSON.parse(res.body()).panes[0]
   assert.deepEqual([p.width, p.height], [0, 0]) // JSON has no NaN — a consumer would get null and break its layout
@@ -358,6 +361,114 @@ test("redactSecrets: an OSC title sequence hiding a secret is caught too", () =>
 function stripAnsiForTest(s) {
   return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g, "")
 }
+
+// OYR-0023: panes that advertise a transport are messaged through it; keystrokes are the fallback.
+/** Recording structured-transport double; `fail` makes the endpoint answer non-OK. */
+function fakePost({ fail = false, throws = null } = {}) {
+  const calls = []
+  __setPost(async (endpoint, payload) => {
+    calls.push({ endpoint, payload })
+    if (throws) throw new Error(throws)
+    return { ok: !fail, status: fail ? 500 : 200 }
+  })
+  return calls
+}
+
+test("mode: a pane with a loopback endpoint is structured and carries it; the rest stay tty", async () => {
+  fakeExec({ "list-panes": LIST_LINES })
+  const { panes } = JSON.parse((await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })).body())
+  assert.deepEqual(panes.map((p) => p.mode), ["tty", "tty", "tty", "tty", "structured"])
+  assert.equal(panes[4].endpoint, "http://127.0.0.1:8123/msg")
+  assert.ok(!("endpoint" in panes[0]), "a tty pane carries no endpoint key at all")
+})
+
+test("safeEndpoint: only loopback http(s) is honoured — a pane option can't make this an open proxy", () => {
+  for (const good of ["http://127.0.0.1:8123/msg", "http://localhost:9/x", "https://127.0.0.1:1/y", "http://[::1]:7/z"])
+    assert.ok(safeEndpoint(good), good)
+  for (const bad of [
+    "", "not a url", "http://evil.example/x", "http://169.254.169.254/latest", "http://10.0.0.5:80/x",
+    "file:///etc/passwd", "ftp://127.0.0.1/x", "http://127.0.0.1.evil.example/x",
+  ])
+    assert.equal(safeEndpoint(bad), null, bad)
+})
+
+test("a rejected endpoint leaves the pane tty rather than failing the listing", async () => {
+  fakeExec({ "list-panes": ["main", "0", "0", "%0", "node", "/w", "80", "24", "0", "0", "http://evil.example/x", "t"].join(T) + "\n" })
+  const { panes } = JSON.parse((await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes?token=tok" })).body())
+  assert.equal(panes[0].mode, "tty")
+  assert.ok(!("endpoint" in panes[0]))
+})
+
+test("input ROUTES to the advertised transport instead of typing, and says which it used", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  const posts = fakePost()
+  const res = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2520/input?token=tok",
+    body: JSON.stringify({ text: "status?", enter: true, expectedCommand: "node" }),
+  })
+  assert.equal(res.status, 200)
+  const body = JSON.parse(res.body())
+  assert.equal(body.transport, "structured")
+  assert.equal(body.pane.mode, "structured")
+  assert.deepEqual(posts, [{ endpoint: "http://127.0.0.1:8123/msg", payload: { text: "status?", enter: true } }])
+  assert.ok(!calls.some((c) => c[0] === "send-keys"), "no keystrokes when a transport exists")
+})
+
+test("a tty pane still types — routing PREFERS structured, it does not require it", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  const posts = fakePost()
+  const res = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2513/input?token=tok",
+    body: JSON.stringify({ text: "hi", expectedCommand: "claude" }),
+  })
+  assert.equal(JSON.parse(res.body()).transport, "tty")
+  assert.deepEqual(posts, [])
+  assert.ok(calls.some((c) => c[0] === "send-keys"))
+})
+
+test("transport:'tty' forces keystrokes on a structured pane — a wedged endpoint can't strand it", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  const posts = fakePost()
+  const res = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2520/input?token=tok",
+    body: JSON.stringify({ text: "hi", expectedCommand: "node", transport: "tty" }),
+  })
+  assert.equal(JSON.parse(res.body()).transport, "tty")
+  assert.deepEqual(posts, [])
+  assert.deepEqual(calls.slice(1), [["send-keys", "-t", "%20", "-l", "--", "hi"]])
+})
+
+test("a failing transport is 502 naming the endpoint — NOT a silent fallback to typing", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  for (const mode of [{ fail: true }, { throws: "ECONNREFUSED" }]) {
+    fakePost(mode)
+    const res = await drive(handleTmuxBridge, {
+      method: "POST",
+      url: "/tmux/panes/%2520/input?token=tok",
+      body: JSON.stringify({ text: "hi", expectedCommand: "node" }),
+    })
+    assert.equal(res.status, 502, JSON.stringify(mode))
+    assert.equal(JSON.parse(res.body()).endpoint, "http://127.0.0.1:8123/msg")
+  }
+  // Silently typing the text after a failed structured send would deliver it TWICE if the endpoint
+  // had in fact received it — the caller decides, with transport:"tty".
+  assert.ok(!calls.some((c) => c[0] === "send-keys"))
+})
+
+test("the stale-pane guard still applies on the structured path", async () => {
+  fakeExec({ "list-panes": LIST_LINES })
+  const posts = fakePost()
+  const res = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2520/input?token=tok",
+    body: JSON.stringify({ text: "hi", expectedCommand: "vim" }), // %20 runs node
+  })
+  assert.equal(res.status, 409)
+  assert.deepEqual(posts, [], "a changed pane is not messaged over ANY transport")
+})
 
 test("redactSecrets: clean text passes through untouched", () => {
   const { text, count } = redactSecrets("just a normal build log\nnpm ok\n")
