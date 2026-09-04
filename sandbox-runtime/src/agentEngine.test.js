@@ -1,6 +1,9 @@
 const fs = require("node:fs"); const os = require("node:os"); const path = require("node:path")
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), "oyren-engine-")) // isolate the session-id file
 process.env.WORKING_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "oyren-engine-wd-")) // repo-less → no recovery preamble
+// Running inside a real container these are set for real, and agentMeta would fetch the LIVE
+// session's meta from the LIVE orchestrator — injecting a real recovery preamble into these tests.
+for (const k of ["ORCHESTRATOR_URL", "OYREN_SESSION_SLUG", "CONTROL_TOKEN", "AGENT_META_B64"]) delete process.env[k]
 const { test } = require("node:test")
 const assert = require("node:assert")
 const engine = require("./agentEngine")

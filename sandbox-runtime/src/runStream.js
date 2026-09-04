@@ -51,11 +51,12 @@ function runStreaming(res, command, { cwd, env = process.env, timeoutMs = DEFAUL
     // Write footer to log
     const footer = `\n${"=".repeat(60)}\n# Finished: ${new Date().toISOString()}\n# Exit code: ${exitCode}\n# Timed out: ${timedOut}\n`
     logStream.write(footer)
-    logStream.end()
-
-    // Send final SSE event
-    res.write(`event: done\ndata: ${JSON.stringify({ exitCode, timedOut, runId })}\n\n`)
-    res.end()
+    // "done" promises a complete log: anyone reacting to it (run_result, the runs panel, a curl
+    // loop tailing the file) reads the log file immediately, so the footer must be on disk first.
+    logStream.end(() => {
+      res.write(`event: done\ndata: ${JSON.stringify({ exitCode, timedOut, runId })}\n\n`)
+      res.end()
+    })
   }
 
   let child
