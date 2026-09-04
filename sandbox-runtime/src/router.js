@@ -3,6 +3,7 @@
 //  - /_oyren/health   → always 200, NEVER proxied (DO's health check must pass during long builds).
 //  - /_oyren/control  → control API (CONTROL_TOKEN).
 //  - /agent/message   → one headless Claude Code chat turn, ndjson stream-json (SESSION_TOKEN).
+//  - /tmux/*          → the tmux bridge: pane list / screen read / guarded input (SESSION_TOKEN).
 //  - /_oyren/download → hand a staged deliverable to the browser over the tunnel (SESSION_TOKEN).
 //  - /_oyren/logs     → recent server + app stdout/stderr, HTML viewer + /raw text (SESSION_TOKEN).
 //  - /_oyren/runs     → JSON list of detached script runs + their output for the panel (SESSION_TOKEN).
@@ -20,6 +21,7 @@ const { handleControl } = require("./control")
 const { handleAgentMessage, handleAgentCurrent } = require("./agentChat")
 const { handleAgentStream } = require("./agentStream")
 const { handleAgentInterrupt, handleAgentModels, handleAgentModel } = require("./agentControl")
+const { handleTmuxBridge } = require("./tmuxBridge")
 const { handleDownload } = require("./download")
 const { handleLogs } = require("./logs")
 const { handleRuns } = require("./runs")
@@ -50,6 +52,7 @@ function createRouter({ supervisor, workdir, controlToken, routes }) {
     if (route.kind === "agent-models") return handleAgentModels(req, res)
     if (route.kind === "agent-model") return handleAgentModel(req, res)
     if (route.kind === "agent-current") return handleAgentCurrent(req, res)
+    if (route.kind === "tmux") return handleTmuxBridge(req, res)
     if (route.kind === "download") return handleDownload(req, res, { workdir })
     if (route.kind === "logs") return handleLogs(req, res)
     if (route.kind === "runs") return handleRuns(req, res)
