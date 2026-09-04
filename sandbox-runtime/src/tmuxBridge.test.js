@@ -66,9 +66,9 @@ test("GET /tmux/panes: tmux failure is 503 with the unit state surfaced", async 
   assert.ok("unit" in body)
 })
 
-test("GET screen: capture-pane argv with the default 200 lines; numeric pane ids normalize to %N", async () => {
+test("GET screen: capture-pane argv with the default 200 lines", async () => {
   const calls = fakeExec({ "capture-pane": "hello\nworld\n" })
-  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/12/screen?token=tok" })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok" })
   assert.equal(res.status, 200)
   assert.deepEqual(calls, [["capture-pane", "-p", "-J", "-S", "-200", "-t", "%12"]])
   const body = JSON.parse(res.body())
@@ -108,9 +108,9 @@ test("GET screen: a dead pane is 404, other capture failures 503", async () => {
   assert.equal(broken.status, 503)
 })
 
-test("pane id shapes: %N and N are accepted, anything else is 400 before tmux is touched", async () => {
+test("pane id shapes: only %N is accepted — bare digits (pane INDEXES, a different namespace) and junk are 400 before tmux is touched", async () => {
   const calls = fakeExec({ "capture-pane": "" })
-  for (const bad of ["abc", "%25x", "..", "-t", "%2512;kill-server"]) {
+  for (const bad of ["12", "0", "abc", "%25x", "..", "-t", "%2512;kill-server"]) {
     const res = await drive(handleTmuxBridge, { method: "GET", url: `/tmux/panes/${bad}/screen?token=tok` })
     assert.equal(res.status, 400, bad)
   }
@@ -215,7 +215,7 @@ test("GET /tmux/panes/:id: pane record plus a short redacted preview, dead pane 
   assert.equal(gone.status, 404)
 })
 
-test("POST input: a changed cwd trips the guard; expectedCwd alone also satisfies it", async () => {
+test("POST input: a changed cwd trips the guard, but expectedCwd alone can NOT carry it (weakest identity signal)", async () => {
   const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
   const moved = await drive(handleTmuxBridge, {
     method: "POST",
@@ -224,13 +224,24 @@ test("POST input: a changed cwd trips the guard; expectedCwd alone also satisfie
   })
   assert.equal(moved.status, 409)
   assert.equal(JSON.parse(moved.body()).field, "cwd")
-  assert.ok(!calls.some((c) => c[0] === "send-keys"))
-  const ok = await drive(handleTmuxBridge, {
+  const cwdOnly = await drive(handleTmuxBridge, {
     method: "POST",
     url: "/tmux/panes/%2513/input?token=tok",
-    body: JSON.stringify({ text: "hi", expectedCwd: "/w/repo" }),
+    body: JSON.stringify({ text: "hi", expectedCwd: "/w/repo" }), // matches — still refused
   })
-  assert.equal(ok.status, 200)
+  assert.equal(cwdOnly.status, 400)
+  assert.ok(!calls.some((c) => c[0] === "send-keys"))
+})
+
+test("POST input: text beyond 64KB is 413 before any tmux call", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  const res = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2513/input?token=tok",
+    body: JSON.stringify({ text: "x".repeat(64 * 1024 + 1), expectedCommand: "claude" }),
+  })
+  assert.equal(res.status, 413)
+  assert.equal(calls.length, 0)
 })
 
 test("redactSecrets: clean text passes through untouched", () => {

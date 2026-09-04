@@ -8,7 +8,8 @@
 //                                       call whose fields a caller echoes back as expected* on input
 //   GET  /tmux/panes/:id/screen?lines → capture-pane text, secrets redacted (passive, always allowed)
 //   POST /tmux/panes/:id/input        → send-keys, ONLY when the pane still matches what the caller
-//                                       last observed (expectedCommand/expectedTitle/expectedCwd, else 409)
+//                                       last observed (expectedCommand/expectedTitle required,
+//                                       expectedCwd as optional extra tightening; mismatch → 409)
 //
 // All three are SESSION_TOKEN gated like /agent/*. Every response carries the oyren-tmux unit state
 // (tmuxUnit.js): panes normally live in the systemd unit's server, and "the unit is dead so you're
@@ -34,6 +35,9 @@ const isLikelyAgent = (command, title) => AGENT_RE.test(command) || AGENT_RE.tes
 const MAX_LINES = 5000
 const DEFAULT_LINES = 200
 const PREVIEW_LINES = 15
+// Input text lands in a single send-keys argv; a multi-MB body would hit E2BIG/maxBuffer opaquely,
+// so oversize fails crisply instead. 64KB is far beyond any sane pane message.
+const MAX_TEXT_BYTES = 64 * 1024
 
 // What a leaked credential looks like on a screen: provider token prefixes, AWS key ids, JWTs,
 // Bearer headers, and `password=`/`token:`-style assignments. Replacement keeps the surrounding
@@ -92,8 +96,10 @@ async function listPanes() {
     })
 }
 
-/** "%3" | "3" | url-encoded variants → "%3"; null for anything that isn't a tmux pane id. The
- *  strict shape doubles as the safety check on what reaches `-t`. */
+/** "%3" (raw or url-encoded) → "%3"; null for anything else. Bare digits are deliberately
+ *  rejected: pane INDEXES (the .N in a target like "main:5.1") and pane IDS (%N) are different
+ *  namespaces, and silently promoting "1" to "%1" would address a different pane than the caller
+ *  meant. The strict shape doubles as the safety check on what reaches `-t`. */
 function paneIdOf(segment) {
   let s
   try {
@@ -101,7 +107,6 @@ function paneIdOf(segment) {
   } catch {
     return null
   }
-  if (/^\d+$/.test(s)) s = `%${s}`
   return /^%\d+$/.test(s) ? s : null
 }
 
@@ -165,10 +170,14 @@ async function handleInput(req, res, paneId) {
   }
   const { text, enter = false, expectedCommand, expectedTitle, expectedCwd } = body
   if (typeof text !== "string") return fail(res, 400, "text (string) is required")
+  if (Buffer.byteLength(text) > MAX_TEXT_BYTES) return fail(res, 413, `text exceeds ${MAX_TEXT_BYTES} bytes`)
   // The stale-pane guard is not optional: typing into a pane nobody has looked at is exactly the
-  // failure mode the design forbids. The caller proves recency by echoing what it last observed.
-  if (typeof expectedCommand !== "string" && typeof expectedTitle !== "string" && typeof expectedCwd !== "string") {
-    return fail(res, 400, "expectedCommand, expectedTitle or expectedCwd is required (pass what you last observed)")
+  // failure mode the design forbids. The caller proves recency by echoing what it last observed —
+  // and that proof must be command or title: cwd alone is the weakest identity signal (every pane
+  // in a worktree shares it, and an agent that exited to a bare shell keeps it), so expectedCwd
+  // only tightens a guard, it never carries one.
+  if (typeof expectedCommand !== "string" && typeof expectedTitle !== "string") {
+    return fail(res, 400, "expectedCommand or expectedTitle is required (expectedCwd alone is not a pane identity)")
   }
 
   let pane
