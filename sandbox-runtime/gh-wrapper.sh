@@ -18,6 +18,14 @@
 
 set -u
 
+# 0. A caller-exported GH_TOKEN is an explicit credential choice — the launch env never sets
+#    GH_TOKEN (only GITHUB_TOKEN), so its presence means the caller put it there deliberately
+#    (a personal PAT, the git-credential recipe, a test). Minting here would silently overwrite
+#    it; pass through to the real gh untouched instead.
+if [ -n "${GH_TOKEN:-}" ]; then
+  exec "${GH_WRAPPER_REAL_GH:-/usr/bin/gh}" "$@"
+fi
+
 token=""
 
 # Detect the repo from the git remote of $PWD — same "owner/repo" used by `gh` to route API calls.

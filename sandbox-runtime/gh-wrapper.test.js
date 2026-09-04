@@ -85,6 +85,35 @@ function captureBody(respond) {
   return { handler, bodyOf }
 }
 
+// Step 0: a caller-exported GH_TOKEN wins outright — the wrapper must not mint over it.
+test("step 0: caller-exported GH_TOKEN passes through untouched and no mint request is made", async () => {
+  const { handler, bodyOf } = captureBody((res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ token: "ghs_SHOULD_NOT_BE_MINTED" }))
+  })
+  const srv = await serve(handler)
+  try {
+    const { ghToken, githubToken } = await runAsync({
+      GH_TOKEN: "ghp_CALLERS_OWN",
+      GITHUB_TOKEN: "ghs_LAUNCH",
+      ORCHESTRATOR_URL: srv.url,
+      OYREN_SESSION_SLUG: "sb-x",
+      CONTROL_TOKEN: "ctl",
+    })
+    assert.equal(ghToken, "ghp_CALLERS_OWN")
+    assert.equal(githubToken, "ghs_LAUNCH") // launch var left alone, not overwritten to match
+    assert.equal(bodyOf(), "", "the wrapper must not call the orchestrator when GH_TOKEN is caller-set")
+  } finally {
+    srv.close()
+  }
+})
+
+test("step 0: caller GH_TOKEN passthrough still forwards argv unchanged", () => {
+  const { argv, ghToken } = run({ GH_TOKEN: "ghp_CALLERS_OWN" }, os.tmpdir(), ["api", "user"])
+  assert.equal(argv, "api user")
+  assert.equal(ghToken, "ghp_CALLERS_OWN")
+})
+
 test("forwards argv to the real gh binary unchanged", () => {
   const { argv } = run({ GITHUB_TOKEN: "ghs_LAUNCH" }, os.tmpdir(), ["pr", "view", "42"])
   assert.equal(argv, "pr view 42")
