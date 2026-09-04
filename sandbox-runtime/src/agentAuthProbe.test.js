@@ -90,6 +90,22 @@ test("hasCredential treats an EMPTY credentials file as missing", async () => {
   assert.equal(hasCredential({ home, env: {}, agentKind: "claude-code" }), false)
 })
 
+test("cursor is keyed by its AGENT_KIND name cursor-cli — the shape the spawn table and launches use", () => {
+  assert.equal(hasCredential({ home: homeWith(null), env: { CURSOR_API_KEY: "k" }, agentKind: "cursor-cli" }), true)
+  assert.equal(hasCredential({ home: homeWith(null), env: {}, agentKind: "cursor-cli" }), false)
+  // the old mis-keyed name has no entry any more — an honest unknown, not a stale alias
+  assert.equal(hasCredential({ home: homeWith(null), env: { CURSOR_API_KEY: "k" }, agentKind: "cursor" }), null)
+})
+
+test("a *_B64 seed var counts as a credential — the file it becomes is only written on first spawn", () => {
+  assert.equal(hasCredential({ home: homeWith(null), env: { CODEX_AUTH_JSON_B64: "e30=" }, agentKind: "codex-cli" }), true)
+  assert.equal(hasCredential({ home: homeWith(null), env: { GEMINI_OAUTH_CREDS_B64: "e30=" }, agentKind: "gemini-cli" }), true)
+})
+
+test("antigravity-cli has no credential contract ⇒ null (unknown), never a false alarm", () => {
+  assert.equal(hasCredential({ home: homeWith(null), env: {}, agentKind: "antigravity-cli" }), null)
+})
+
 test("looksUnauthenticated matches what the CLIs actually print", () => {
   assert.ok(looksUnauthenticated("Not logged in · Please run /login"))
   assert.ok(looksUnauthenticated('{"error":"authentication_failed"}'))

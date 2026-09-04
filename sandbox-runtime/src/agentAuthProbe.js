@@ -22,11 +22,18 @@ const PROBE_TIMEOUT_MS = 25000
  */
 const CREDENTIALS = {
   "claude-code": { file: ".claude/.credentials.json", env: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] },
-  "codex-cli": { file: ".codex/auth.json", env: ["OPENAI_API_KEY"] },
-  "gemini-cli": { file: ".gemini/oauth_creds.json", env: ["GEMINI_API_KEY"] },
+  // The *_B64 seed vars count too: the side-auth overlay (sideAgentAuth.js) carries file-shaped
+  // creds as env, and seedAgentAuth.js only writes the file when that kind first spawns — a
+  // credential that WILL be seeded is a credential the caller has.
+  "codex-cli": { file: ".codex/auth.json", env: ["OPENAI_API_KEY", "CODEX_AUTH_JSON_B64"] },
+  "gemini-cli": { file: ".gemini/oauth_creds.json", env: ["GEMINI_API_KEY", "GEMINI_OAUTH_CREDS_B64"] },
   "qwen-code": { file: null, env: ["OPENAI_API_KEY", "DASHSCOPE_API_KEY"] },
-  cursor: { file: null, env: ["CURSOR_API_KEY"] },
+  // Keyed by AGENT_KIND — the spawn-table name is "cursor-cli"; the old "cursor" key never matched,
+  // so cursor launches silently probed as `unknown` instead of catching a missing CURSOR_API_KEY.
+  "cursor-cli": { file: null, env: ["CURSOR_API_KEY"] },
   opencode: { file: null, env: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"] },
+  // antigravity-cli is deliberately absent: no credential contract is seeded or documented for it
+  // anywhere in this runtime, and a wrong "failed" is worse than an honest `unknown`.
 }
 
 const defaultRun = (cmd, args, opts) =>
