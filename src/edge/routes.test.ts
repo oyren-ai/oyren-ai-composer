@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidHost, isValidUpstream } from "./routes.js";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isValidHost, isValidUpstream, loadRoutes } from "./routes.js";
 import { renderMap } from "./caddy.js";
 
 const DOMAIN = "edge.example.com";
@@ -39,6 +42,51 @@ test("isValidUpstream accepts RFC1918 + CGNAT and rejects non-private upstreams"
   assert.ok(!isValidUpstream("8.8.8.8:80"));
   assert.ok(!isValidUpstream("1.2.3.4:80"));
   assert.ok(!isValidUpstream("192.88.99.1:80"));
+});
+
+test("isValidUpstream: the range boundaries, one step either side", () => {
+  // private side of each edge…
+  assert.ok(isValidUpstream("172.16.0.0:80"));
+  assert.ok(isValidUpstream("172.31.255.255:80"));
+  assert.ok(isValidUpstream("100.64.0.0:80"));
+  assert.ok(isValidUpstream("100.127.255.255:80"));
+  // …and the public neighbours immediately outside it
+  assert.ok(!isValidUpstream("172.15.255.255:80"));
+  assert.ok(!isValidUpstream("172.32.0.0:80"));
+  assert.ok(!isValidUpstream("100.63.255.255:80"));
+  assert.ok(!isValidUpstream("100.128.0.0:80"));
+});
+
+test("isValidUpstream rejects leading-zero octets (getaddrinfo reads them as octal)", () => {
+  // "010.0.0.1" would pass a decimal range check as 10.x but resolve to the PUBLIC 8.0.0.1.
+  assert.ok(!isValidUpstream("010.0.0.1:80"));
+  assert.ok(!isValidUpstream("172.016.0.1:80"));
+  assert.ok(!isValidUpstream("192.168.01.1:80"));
+  assert.ok(isValidUpstream("10.0.0.1:80")); // the canonical form still passes
+});
+
+test("loadRoutes drops entries that fail the current upstream rule (the fix is retroactive)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "oyren-edge-routes-"));
+  const file = join(dir, "edge-routes.json");
+  await writeFile(
+    file,
+    JSON.stringify({
+      "good.example.com": "10.1.2.3:3000",
+      "public.example.com": "8.8.8.8:80", // written before the rule existed
+      "metadata.example.com": "169.254.169.254:80",
+      "octal.example.com": "010.0.0.1:80",
+    }),
+    "utf8",
+  );
+  assert.deepEqual(await loadRoutes(file), { "good.example.com": "10.1.2.3:3000" });
+});
+
+test("loadRoutes on a missing or corrupt file is an empty map, never a throw", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "oyren-edge-routes-"));
+  assert.deepEqual(await loadRoutes(join(dir, "absent.json")), {});
+  const corrupt = join(dir, "corrupt.json");
+  await writeFile(corrupt, "{not json", "utf8");
+  assert.deepEqual(await loadRoutes(corrupt), {});
 });
 
 test("renderMap emits one 'host upstream' line per route", () => {
