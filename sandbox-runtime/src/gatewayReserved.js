@@ -25,6 +25,7 @@ const RESERVED = [
   ["/agent/interrupt", "Stop the running agent turn"],
   ["/agent/models", "The models this session exposes"],
   ["/agent/model", "Switch the agent's model"],
+  ["/agent/reset", "End the conversation everywhere and mark the boundary in the event log"],
 ]
 
 function howToCard() {

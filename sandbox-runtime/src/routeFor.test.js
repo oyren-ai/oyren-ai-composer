@@ -81,6 +81,8 @@ test("the interactive agent endpoints each get their own kind", () => {
   assert.equal(routeFor("/agent/models?token=x").kind, "agent-models")
   assert.equal(routeFor("/agent/model").kind, "agent-model") // /model is distinct from /models
   assert.equal(routeFor("/agent/current").kind, "agent-current")
+  assert.equal(routeFor("/agent/reset?token=x").kind, "agent-reset")
+  assert.equal(routeFor("/agent/resetxyz").kind, "app") // not a prefix match
 })
 
 test("everything else is the user app", () => {
