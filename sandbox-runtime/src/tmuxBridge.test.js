@@ -285,6 +285,80 @@ test("POST input: text beyond 64KB is 413 before any tmux call", async () => {
   assert.equal(calls.length, 0)
 })
 
+// OYR-0082: raw (un-joined) + ANSI colour capture, and redaction that escapes cannot dodge.
+const ESC = "\x1b"
+
+test("screen: ?raw=1 drops -J, ?ansi=1 adds -e, and the flags are echoed back", async () => {
+  let calls = fakeExec({ "capture-pane": "x" })
+  const plain = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok" })
+  assert.deepEqual(calls[0], ["capture-pane", "-p", "-J", "-S", "-200", "-t", "%12"])
+  assert.deepEqual([JSON.parse(plain.body()).raw, JSON.parse(plain.body()).ansi], [false, false])
+
+  calls = fakeExec({ "capture-pane": "x" })
+  await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok&raw=1" })
+  assert.deepEqual(calls[0], ["capture-pane", "-p", "-S", "-200", "-t", "%12"]) // no -J
+
+  calls = fakeExec({ "capture-pane": "x" })
+  await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok&ansi=1" })
+  assert.deepEqual(calls[0], ["capture-pane", "-p", "-J", "-e", "-S", "-200", "-t", "%12"])
+
+  calls = fakeExec({ "capture-pane": "x" })
+  const both = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok&raw=true&ansi=true&lines=40" })
+  assert.deepEqual(calls[0], ["capture-pane", "-p", "-e", "-S", "-40", "-t", "%12"])
+  assert.deepEqual([JSON.parse(both.body()).raw, JSON.parse(both.body()).ansi], [true, true])
+})
+
+test("screen: anything other than 1/true leaves the flag off (no accidental -e on ?ansi=0)", async () => {
+  const calls = fakeExec({ "capture-pane": "x" })
+  await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2512/screen?token=tok&raw=0&ansi=no" })
+  assert.deepEqual(calls[0], ["capture-pane", "-p", "-J", "-S", "-200", "-t", "%12"])
+})
+
+test("redactSecrets: a secret split by escape sequences cannot dodge the regex", () => {
+  // What -e capture really produces when a TUI colours part of a token: the string is contiguous
+  // on screen but interrupted by SGR bytes in the buffer, so a contiguous-token regex walks past it.
+  const split = `export GH_TOKEN=ghp_abcdefghij${ESC}[0m0123456789ABCD`
+  const { text, count } = redactSecrets(split)
+  assert.ok(!text.includes("ghp_abcdefghij"), `secret survived: ${JSON.stringify(text)}`)
+  assert.ok(!text.includes("0123456789ABCD"), "the tail of the split token survived")
+  assert.ok(count > 0)
+})
+
+test("redactSecrets: colour survives on lines that carry no secret", () => {
+  const coloured = `${ESC}[32mnpm ok${ESC}[0m\n${ESC}[31mbuild failed${ESC}[0m`
+  const { text, count } = redactSecrets(coloured)
+  assert.equal(text, coloured) // untouched, escapes and all
+  assert.equal(count, 0)
+})
+
+test("redactSecrets: a coloured line WITH a contiguous secret keeps its colour and loses the secret", () => {
+  // The secret follows a SPACE, so the raw pass can see it (an SGR sequence ends in "m" — a word
+  // character — which kills the leading \b and is exactly why the stripping fallback has to exist).
+  const line = `${ESC}[33mtoken:${ESC}[0m ghp_abcdefghij0123456789ABCD`
+  const { text } = redactSecrets(line)
+  assert.ok(text.includes(ESC + "[33m"), "colour preserved when redaction works without stripping")
+  assert.ok(!text.includes("ghp_abcdefghij"))
+})
+
+test("redactSecrets: an SGR sequence butted against a token still loses the token (colour sacrificed)", () => {
+  // No space: "…[0m" + "ghp_…" leaves no word boundary, so this line can only be made safe by
+  // stripping — the trade-off the fallback exists to make, pinned so it can't silently regress.
+  const { text } = redactSecrets(`${ESC}[33mtoken: ${ESC}[0mghp_abcdefghij0123456789ABCD`)
+  assert.ok(!text.includes("ghp_abcdefghij"), "secret survived behind an escape")
+})
+
+test("redactSecrets: an OSC title sequence hiding a secret is caught too", () => {
+  const osc = `${ESC}]0;window${ESC}\\AKIA${ESC}[0mABCDEFGHIJKLMNOP`
+  const { text } = redactSecrets(osc)
+  assert.ok(!/AKIA[0-9A-Z]{16}/.test(stripAnsiForTest(text)), `secret visible once stripped: ${JSON.stringify(text)}`)
+})
+
+/** The assertion's own stripper — deliberately independent of the module's, so a bug in the
+ *  module's regex can't make its own test pass. */
+function stripAnsiForTest(s) {
+  return s.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g, "")
+}
+
 test("redactSecrets: clean text passes through untouched", () => {
   const { text, count } = redactSecrets("just a normal build log\nnpm ok\n")
   assert.equal(text, "just a normal build log\nnpm ok\n")

@@ -6,7 +6,9 @@
 //   GET  /tmux/panes                  → every pane on the server, normalized + likelyAgent flag
 //   GET  /tmux/panes/:id              → one pane + a short redacted screen preview: the look-first
 //                                       call whose fields a caller echoes back as expected* on input
-//   GET  /tmux/panes/:id/screen?lines → capture-pane text, secrets redacted (passive, always allowed)
+//   GET  /tmux/panes/:id/screen?lines → capture-pane text, secrets redacted (passive, always
+//                                       allowed); ?raw=1 keeps wrapped lines unjoined for a
+//                                       fixed-grid tile, ?ansi=1 keeps colour
 //   POST /tmux/panes/:id/input        → send-keys, ONLY when the pane still matches what the caller
 //                                       last observed (expectedCommand/expectedTitle required,
 //                                       expectedCwd as optional extra tightening; mismatch → 409)
@@ -59,7 +61,11 @@ const SECRET_PATTERNS = [
   [/\b((?:password|passwd|secret|api[_-]?key|access[_-]?key|token)\s*[=:]\s*)(\S{6,})/gi, "$1[redacted]"],
 ]
 
-function redactSecrets(text) {
+// CSI (colour/cursor) and OSC (title/hyperlink) sequences — what `capture-pane -e` emits.
+const ANSI_RE = /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g
+const stripAnsi = (text) => text.replace(ANSI_RE, "")
+
+function applyPatterns(text) {
   let count = 0
   let out = text
   for (const [re, replacement] of SECRET_PATTERNS) {
@@ -70,6 +76,41 @@ function redactSecrets(text) {
     })
   }
   return { text: out, count }
+}
+
+/**
+ * Redact secret-looking content. Colour codes do not exempt anything: with `-e` capture, a token
+ * can be interrupted mid-string by an SGR sequence (`ghp_abc<ESC>[0mdef…`), which walks straight
+ * through a regex written for contiguous text. So each line is also checked with its escapes
+ * removed, and when stripping reveals a secret the raw pass missed, that line is emitted stripped
+ * and redacted — it loses its colour, never its redaction. Lines with no escapes take the plain
+ * path unchanged, so this is the ONE redaction routine for every bridge output.
+ */
+function redactSecrets(text) {
+  let count = 0
+  const lines = text.split("\n").map((line) => {
+    const stripped = stripAnsi(line)
+    if (stripped === line) {
+      const plain = applyPatterns(line)
+      count += plain.count
+      return plain.text
+    }
+    const raw = applyPatterns(line)
+    // The precise question is "does a secret survive in the redacted line once escapes are gone?",
+    // and the answer must be read off the TEXT, not a match count: an escape can add an overlapping
+    // match that rewrites a placeholder to itself (`token: [redacted]` matches the assignment
+    // pattern again and yields the same string), which a count comparison misreads as a hidden
+    // secret and needlessly strips the colour off a line that was already safe.
+    const afterRaw = stripAnsi(raw.text)
+    if (applyPatterns(afterRaw).text !== afterRaw) {
+      const bare = applyPatterns(stripped)
+      count += bare.count
+      return bare.text // escapes really were hiding a secret — colour is the thing we give up
+    }
+    count += raw.count
+    return raw.text
+  })
+  return { text: lines.join("\n"), count }
 }
 
 // Injectable tmux runner (same seam style as tmuxUnit.js): tests swap it for a recorder.
@@ -155,18 +196,34 @@ async function handlePaneDetail(req, res, paneId) {
   }
 }
 
+const isOn = (v) => v === "1" || v === "true"
+
 async function handleScreen(req, res, paneId) {
   if (req.method !== "GET") return fail(res, 405, "method not allowed")
-  const raw = new URL(req.url, "http://localhost").searchParams.get("lines")
-  const lines = raw == null ? DEFAULT_LINES : Math.floor(Number(raw))
+  const params = new URL(req.url, "http://localhost").searchParams
+  const linesParam = params.get("lines")
+  const lines = linesParam == null ? DEFAULT_LINES : Math.floor(Number(linesParam))
   if (!Number.isFinite(lines) || lines < 1 || lines > MAX_LINES) {
     return fail(res, 400, `lines must be an integer between 1 and ${MAX_LINES}`)
   }
+  // ?raw=1 drops -J and ?ansi=1 adds -e, both opt-in because they serve a different consumer:
+  //   -J joins wrapped lines, which is right for an agent reading prose and WRONG for a fixed-grid
+  //     tile, where it destroys column alignment;
+  //   -e keeps the colour an agent TUI paints, which otherwise arrives as flat grey text.
+  // Cadence note: -e capture is materially more expensive per call than plain text, so it suits a
+  // poll-only-the-visible-tiles consumer — not a background poll of every pane on the server.
+  const raw = isOn(params.get("raw"))
+  const ansi = isOn(params.get("ansi"))
   try {
-    // -p print, -J join wrapped lines, -S -N: start N lines back into history.
-    const captured = await execImpl(["capture-pane", "-p", "-J", "-S", `-${lines}`, "-t", paneId])
+    // -p print, -J join wrapped lines (unless raw), -e keep escapes, -S -N: N lines back in history.
+    const args = ["capture-pane", "-p"]
+    if (!raw) args.push("-J")
+    if (ansi) args.push("-e")
+    args.push("-S", `-${lines}`, "-t", paneId)
+    const captured = await execImpl(args)
+    // Redaction is NOT conditional on the mode — see redactSecrets: escapes never exempt a secret.
     const { text, count } = redactSecrets(captured)
-    json(res, 200, { unit: tmuxUnitState(), id: paneId, lines, screen: text, redactions: count })
+    json(res, 200, { unit: tmuxUnitState(), id: paneId, lines, raw, ansi, screen: text, redactions: count })
   } catch (err) {
     fail(res, /can't find pane|no such pane/i.test(err.message) ? 404 : 503, "capture failed", { detail: err.message })
   }
