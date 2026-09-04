@@ -38,6 +38,7 @@ function routeFor(rawUrl) {
   if (isUnder(path, "/agent/stream")) return { kind: "agent-stream" }
   if (isUnder(path, "/agent/interrupt")) return { kind: "agent-interrupt" }
   if (isUnder(path, "/agent/models")) return { kind: "agent-models" }
+  if (isUnder(path, "/agent/reset")) return { kind: "agent-reset" }
   if (isUnder(path, "/agent/model")) return { kind: "agent-model" }
   if (isUnder(path, "/agent/message")) return { kind: "agent" }
   // The tmux bridge (tmuxBridge.js) — one kind for the whole prefix; the handler dispatches
