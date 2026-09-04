@@ -213,6 +213,113 @@ test("step 1: repoFullName is omitted from the orchestrator request when $PWD is
   }
 })
 
+// Target resolution: --repo/-R flag > GH_REPO env > cwd origin remote, mirroring gh itself.
+function mintServer() {
+  const { handler, bodyOf } = captureBody((res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ token: "ghs_FROM_ORCH" }))
+  })
+  return serve(handler).then((srv) => ({ srv, bodyOf }))
+}
+const ORCH_ENV = { OYREN_SESSION_SLUG: "sb-x", CONTROL_TOKEN: "ctl" }
+
+test("target: --repo flag beats the cwd origin remote", async () => {
+  const repo = makeRepo("git@github.com:oyren-ai/oyren-ai-composer.git")
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, repo, ["pr", "view", "--repo", "oyren-ai/oyren-ai-next"])
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/oyren-ai-next"/)
+  } finally {
+    srv.close()
+    fs.rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test("target: -R short flag and --repo=value spellings both resolve, last occurrence wins", async () => {
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, os.tmpdir(), [
+      "pr", "view", "--repo=oyren-ai/first", "-R", "oyren-ai/oyren-ai-sales",
+    ])
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/oyren-ai-sales"/)
+  } finally {
+    srv.close()
+  }
+})
+
+test("target: full-URL --repo value is normalized to owner/repo", async () => {
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, os.tmpdir(), [
+      "api", "x", "-R", "https://github.com/oyren-ai/oyren-ai-next.git",
+    ])
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/oyren-ai-next"/)
+  } finally {
+    srv.close()
+  }
+})
+
+test("target: GH_REPO env is used when no flag is present, and beats the cwd remote", async () => {
+  const repo = makeRepo("https://github.com/oyren-ai/oyren-ai-composer.git")
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV, GH_REPO: "oyren-ai/oyren-ai-sales" }, repo)
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/oyren-ai-sales"/)
+  } finally {
+    srv.close()
+    fs.rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test("target: --repo flag beats GH_REPO", async () => {
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV, GH_REPO: "oyren-ai/from-env" }, os.tmpdir(), [
+      "pr", "view", "-Royren-ai/from-flag",
+    ])
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/from-flag"/)
+  } finally {
+    srv.close()
+  }
+})
+
+test("target: a non-github.com --repo does NOT fall through to the cwd repo — mint is unscoped", async () => {
+  const repo = makeRepo("https://github.com/oyren-ai/oyren-ai-composer.git")
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, repo, ["pr", "view", "-R", "ghe.corp.example/owner/repo"])
+    assert.ok(!bodyOf().includes("repoFullName"), `expected no repoFullName, got: ${bodyOf()}`)
+  } finally {
+    srv.close()
+    fs.rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test("target: --repo after a bare -- is ignored (cwd remote wins)", async () => {
+  const repo = makeRepo("https://github.com/oyren-ai/oyren-ai-composer.git")
+  const { srv, bodyOf } = await mintServer()
+  try {
+    await runAsync({ ORCHESTRATOR_URL: srv.url, ...ORCH_ENV }, repo, ["some", "cmd", "--", "--repo", "oyren-ai/not-a-target"])
+    assert.match(bodyOf(), /"repoFullName":"oyren-ai\/oyren-ai-composer"/)
+  } finally {
+    srv.close()
+    fs.rmSync(repo, { recursive: true, force: true })
+  }
+})
+
+test("step 2: REPO_CLONE_TOKENS is matched by the --repo target even outside any git repo", () => {
+  const { ghToken } = run(
+    {
+      REPO_FULL_NAMES: "oyren-ai/oyren-ai-composer,oyren-ai/oyren-ai-next",
+      REPO_CLONE_TOKENS: "ghs_COMPOSER,ghs_NEXT",
+      GITHUB_TOKEN: "ghs_LAUNCH",
+    },
+    os.tmpdir(),
+    ["pr", "view", "--repo", "oyren-ai/oyren-ai-next"],
+  )
+  assert.equal(ghToken, "ghs_NEXT")
+})
+
 test("step 1: orchestrator returns no token (e.g. 403) ⇒ falls back to REPO_CLONE_TOKENS", async () => {
   const repo = makeRepo("https://github.com/oyren-ai/oyren-ai-composer.git")
   const srv = await serve((_req, res) => {
