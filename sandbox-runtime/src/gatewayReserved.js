@@ -26,6 +26,7 @@ const RESERVED = [
   ["/agent/models", "The models this session exposes"],
   ["/agent/model", "Switch the agent's model"],
   ["/agent/reset", "End the conversation everywhere and mark the boundary in the event log"],
+  ["/agent/auth", "Per-provider credential status (has a key/login, per agent kind)"],
 ]
 
 function howToCard() {
