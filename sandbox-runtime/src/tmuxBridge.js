@@ -9,9 +9,11 @@
 //   GET  /tmux/panes/:id/screen?lines → capture-pane text, secrets redacted (passive, always
 //                                       allowed); ?raw=1 keeps wrapped lines unjoined for a
 //                                       fixed-grid tile, ?ansi=1 keeps colour
-//   POST /tmux/panes/:id/input        → send-keys, ONLY when the pane still matches what the caller
+//   POST /tmux/panes/:id/input        → message the pane, ONLY when it still matches what the caller
 //                                       last observed (expectedCommand/expectedTitle required,
-//                                       expectedCwd as optional extra tightening; mismatch → 409)
+//                                       expectedCwd as optional extra tightening; mismatch → 409).
+//                                       Routes over the pane's advertised transport when it has one
+//                                       and falls back to send-keys otherwise (see ENDPOINT_OPTION)
 //
 // All three are SESSION_TOKEN gated like /agent/*. Every response carries the oyren-tmux unit state
 // (tmuxUnit.js): panes normally live in the systemd unit's server, and "the unit is dead so you're
@@ -22,6 +24,15 @@ const { execFile } = require("child_process")
 const { json, tokenOk, readBody } = require("./agentHttp")
 const { tmuxUnitState } = require("./tmuxUnit")
 
+// How a pane ADVERTISES a structured transport (OYR-0023): a tmux per-pane user option, set by the
+// process itself with one command —
+//     tmux set-option -p @oyren_agent_endpoint http://127.0.0.1:<port>
+// A pane user option is first-class tmux metadata: it reads straight out of the list format, and
+// unlike the pane title (the design note's other suggestion) it cannot collide with the human label
+// agents already put there. Reads as "" when unset, which is exactly "no transport advertised".
+const ENDPOINT_OPTION = "@oyren_agent_endpoint"
+const ENDPOINT_OPTION_FORMAT = `#{${ENDPOINT_OPTION}}`
+
 // One line per pane, real tab separated (JS "\t" is a literal tab byte in the argv — tmux formats
 // have no escape syntax). pane_title is LAST: it is the only field that can itself contain a tab,
 // so the parser can fold the remainder back into it. The geometry fields let a tile view size
@@ -31,8 +42,30 @@ const LIST_FORMAT = [
   "#{session_name}", "#{window_index}", "#{pane_index}", "#{pane_id}",
   "#{pane_current_command}", "#{pane_current_path}",
   "#{pane_width}", "#{pane_height}", "#{pane_active}", "#{window_zoomed_flag}",
+  ENDPOINT_OPTION_FORMAT,
   "#{pane_title}",
 ].join("\t")
+
+/**
+ * An advertised endpoint is only honoured when it is LOOPBACK http(s). Anything in the container can
+ * set a pane option, so an unrestricted value would turn this runtime — which holds the session
+ * token — into an open proxy for whatever a pane names. A rejected value is not an error: the pane
+ * simply stays `tty` and keystrokes remain its only channel.
+ */
+function safeEndpoint(raw) {
+  if (!raw) return null
+  let u
+  try {
+    u = new URL(raw)
+  } catch {
+    return null
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null
+  // URL keeps an IPv6 host bracketed ("[::1]"), so both spellings are checked.
+  const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1", "[::1]"])
+  if (!LOOPBACK.has(u.hostname)) return null
+  return u.toString()
+}
 
 // Commands/titles that mark a pane as "probably an agent CLI, not a bare shell/build/editor".
 // The name match alone misses real agents: Claude Code launched via the pnpm shim shows
@@ -47,6 +80,9 @@ const PREVIEW_LINES = 15
 // Input text lands in a single send-keys argv; a multi-MB body would hit E2BIG/maxBuffer opaquely,
 // so oversize fails crisply instead. 64KB is far beyond any sane pane message.
 const MAX_TEXT_BYTES = 64 * 1024
+// A wedged endpoint must not hold the request open: past this the send reports a transport failure
+// and the caller can retry with transport:"tty".
+const STRUCTURED_TIMEOUT_MS = 10_000
 
 // What a leaked credential looks like on a screen: provider token prefixes, AWS key ids, JWTs,
 // Bearer headers, and `password=`/`token:`-style assignments. Replacement keeps the surrounding
@@ -129,8 +165,10 @@ async function listPanes() {
     .split("\n")
     .filter((l) => l.length)
     .map((line) => {
-      const [session, win, paneIdx, id, command, cwd, width, height, active, zoomed, ...titleParts] = line.split("\t")
+      const [session, win, paneIdx, id, command, cwd, width, height, active, zoomed, advertised, ...titleParts] =
+        line.split("\t")
       const title = titleParts.join("\t")
+      const endpoint = safeEndpoint(advertised)
       return {
         id,
         target: `${session}:${win}.${paneIdx}`,
@@ -143,8 +181,10 @@ async function listPanes() {
         active: active === "1",
         zoomed: zoomed === "1",
         likelyAgent: isLikelyAgent(command, title),
-        // v1: every pane is raw-terminal. "structured" arrives when panes advertise a transport.
-        mode: "tty",
+        // "structured" = this pane advertised a transport we can post to, so input prefers it and
+        // keystrokes become the fallback. "tty" = keystrokes are the only channel it has.
+        mode: endpoint ? "structured" : "tty",
+        ...(endpoint ? { endpoint } : {}),
       }
     })
 }
@@ -198,6 +238,30 @@ async function handlePaneDetail(req, res, paneId) {
 
 const isOn = (v) => v === "1" || v === "true"
 
+/** Deliver one message over a pane's advertised transport. Deliberately a plain JSON POST of the
+ *  same {text, enter} the tty path would have typed — this slice routes to an existing endpoint, it
+ *  does not define an adapter protocol. Bounded, and never throws: the caller reports the failure
+ *  and the pane stays reachable by keystrokes. */
+let postImpl = async (endpoint, payload) => {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(STRUCTURED_TIMEOUT_MS),
+  })
+  return { ok: res.ok, status: res.status }
+}
+function __setPost(fn) { postImpl = fn }
+
+async function postStructured(endpoint, text, enter) {
+  try {
+    const r = await postImpl(endpoint, { text, enter: !!enter })
+    return r.ok ? { ok: true } : { ok: false, detail: `endpoint answered HTTP ${r.status}` }
+  } catch (err) {
+    return { ok: false, detail: String((err && err.message) || err) }
+  }
+}
+
 async function handleScreen(req, res, paneId) {
   if (req.method !== "GET") return fail(res, 405, "method not allowed")
   const params = new URL(req.url, "http://localhost").searchParams
@@ -237,7 +301,7 @@ async function handleInput(req, res, paneId) {
   } catch {
     return fail(res, 400, "body must be JSON")
   }
-  const { text, enter = false, expectedCommand, expectedTitle, expectedCwd } = body
+  const { text, enter = false, expectedCommand, expectedTitle, expectedCwd, transport } = body
   if (typeof text !== "string") return fail(res, 400, "text (string) is required")
   if (Buffer.byteLength(text) > MAX_TEXT_BYTES) return fail(res, 413, `text exceeds ${MAX_TEXT_BYTES} bytes`)
   // The stale-pane guard is not optional: typing into a pane nobody has looked at is exactly the
@@ -266,17 +330,33 @@ async function handleInput(req, res, paneId) {
     return fail(res, 409, "pane changed since observed", { field: "cwd", expected: expectedCwd, actual: pane.cwd })
   }
 
+  // Routing (OYR-0023): a pane that advertised a transport is messaged THROUGH it — typing into a
+  // terminal is the fallback for panes that have nothing better, not the default for everything.
+  // `transport: "tty"` in the body forces keystrokes anyway, because an advertised endpoint can be
+  // stale or wedged and a caller must still be able to reach the pane it can see.
+  const useStructured = pane.mode === "structured" && transport !== "tty"
   try {
-    // -l: literal keystrokes (so "Enter"/"C-c" in the text are typed, not interpreted); -- ends
-    // option parsing (text may start with "-"). The Enter keypress is its own, non-literal call.
-    if (text.length) await execImpl(["send-keys", "-t", paneId, "-l", "--", text])
-    if (enter) await execImpl(["send-keys", "-t", paneId, "Enter"])
+    if (useStructured) {
+      const r = await postStructured(pane.endpoint, text, enter)
+      if (!r.ok) return fail(res, 502, "structured transport failed", { detail: r.detail, endpoint: pane.endpoint })
+    } else {
+      // -l: literal keystrokes (so "Enter"/"C-c" in the text are typed, not interpreted); -- ends
+      // option parsing (text may start with "-"). The Enter keypress is its own, non-literal call.
+      if (text.length) await execImpl(["send-keys", "-t", paneId, "-l", "--", text])
+      if (enter) await execImpl(["send-keys", "-t", paneId, "Enter"])
+    }
   } catch (err) {
     return fail(res, 503, "send failed", { detail: err.message })
   }
   // Metadata only — the text itself is never logged.
-  console.log(`[tmux-bridge] input ts=${new Date().toISOString()} pane=${paneId} command=${pane.command} bytes=${Buffer.byteLength(text)} enter=${!!enter}`)
-  json(res, 200, { ok: true, unit: tmuxUnitState(), pane: { id: pane.id, command: pane.command, title: pane.title } })
+  const via = useStructured ? "structured" : "tty"
+  console.log(`[tmux-bridge] input ts=${new Date().toISOString()} pane=${paneId} command=${pane.command} bytes=${Buffer.byteLength(text)} enter=${!!enter} via=${via}`)
+  json(res, 200, {
+    ok: true,
+    unit: tmuxUnitState(),
+    transport: via,
+    pane: { id: pane.id, command: pane.command, title: pane.title, mode: pane.mode },
+  })
 }
 
 /** Single dispatch for everything under /tmux (router.js sends the whole prefix here). */
@@ -292,4 +372,4 @@ async function handleTmuxBridge(req, res) {
   return m[2] === "screen" ? handleScreen(req, res, paneId) : handleInput(req, res, paneId)
 }
 
-module.exports = { handleTmuxBridge, redactSecrets, __setExec }
+module.exports = { handleTmuxBridge, redactSecrets, safeEndpoint, __setExec, __setPost }
