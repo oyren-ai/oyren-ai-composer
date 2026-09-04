@@ -199,6 +199,40 @@ test("method mismatches are 405, unknown /tmux paths 404", async () => {
   assert.equal((await drive(handleTmuxBridge, { method: "GET", url: "/tmux/what?token=tok" })).status, 404)
 })
 
+// OYR-0022: the look-before-you-type call and the cwd guard.
+test("GET /tmux/panes/:id: pane record plus a short redacted preview, dead pane 404", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "capture-pane": "building...\ntoken=abc123secretvalue\n" })
+  const res = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2513?token=tok" })
+  assert.equal(res.status, 200)
+  assert.deepEqual(calls[1], ["capture-pane", "-p", "-J", "-S", "-15", "-t", "%13"])
+  const body = JSON.parse(res.body())
+  assert.equal(body.pane.command, "claude")
+  assert.equal(body.pane.cwd, "/w/repo")
+  assert.match(body.preview, /token=\[redacted\]/) // the preview is redacted like /screen
+  assert.ok("unit" in body)
+  fakeExec({ "list-panes": LIST_LINES })
+  const gone = await drive(handleTmuxBridge, { method: "GET", url: "/tmux/panes/%2599?token=tok" })
+  assert.equal(gone.status, 404)
+})
+
+test("POST input: a changed cwd trips the guard; expectedCwd alone also satisfies it", async () => {
+  const calls = fakeExec({ "list-panes": LIST_LINES, "send-keys": "" })
+  const moved = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2513/input?token=tok",
+    body: JSON.stringify({ text: "hi", expectedCommand: "claude", expectedCwd: "/somewhere/else" }),
+  })
+  assert.equal(moved.status, 409)
+  assert.equal(JSON.parse(moved.body()).field, "cwd")
+  assert.ok(!calls.some((c) => c[0] === "send-keys"))
+  const ok = await drive(handleTmuxBridge, {
+    method: "POST",
+    url: "/tmux/panes/%2513/input?token=tok",
+    body: JSON.stringify({ text: "hi", expectedCwd: "/w/repo" }),
+  })
+  assert.equal(ok.status, 200)
+})
+
 test("redactSecrets: clean text passes through untouched", () => {
   const { text, count } = redactSecrets("just a normal build log\nnpm ok\n")
   assert.equal(text, "just a normal build log\nnpm ok\n")

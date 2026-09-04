@@ -4,9 +4,11 @@
 // tmux-agent-bridge-solution.md, "Minimal First Version".
 //
 //   GET  /tmux/panes                  → every pane on the server, normalized + likelyAgent flag
+//   GET  /tmux/panes/:id              → one pane + a short redacted screen preview: the look-first
+//                                       call whose fields a caller echoes back as expected* on input
 //   GET  /tmux/panes/:id/screen?lines → capture-pane text, secrets redacted (passive, always allowed)
 //   POST /tmux/panes/:id/input        → send-keys, ONLY when the pane still matches what the caller
-//                                       last observed (expectedCommand/expectedTitle, else 409)
+//                                       last observed (expectedCommand/expectedTitle/expectedCwd, else 409)
 //
 // All three are SESSION_TOKEN gated like /agent/*. Every response carries the oyren-tmux unit state
 // (tmuxUnit.js): panes normally live in the systemd unit's server, and "the unit is dead so you're
@@ -31,6 +33,7 @@ const isLikelyAgent = (command, title) => AGENT_RE.test(command) || AGENT_RE.tes
 
 const MAX_LINES = 5000
 const DEFAULT_LINES = 200
+const PREVIEW_LINES = 15
 
 // What a leaked credential looks like on a screen: provider token prefixes, AWS key ids, JWTs,
 // Bearer headers, and `password=`/`token:`-style assignments. Replacement keeps the surrounding
@@ -115,6 +118,26 @@ async function handlePanes(req, res) {
   }
 }
 
+// The look-before-you-type call (OYR-0022): one pane's record plus a short redacted screen preview,
+// so a caller (or the human it shows this to) sees command, cwd, title and what's on screen — and
+// knows exactly which values to echo back as expected* on /input.
+async function handlePaneDetail(req, res, paneId) {
+  if (req.method !== "GET") return fail(res, 405, "method not allowed")
+  let pane
+  try {
+    pane = (await listPanes()).find((p) => p.id === paneId)
+  } catch (err) {
+    return fail(res, 503, "tmux unavailable", { detail: err.message })
+  }
+  if (!pane) return fail(res, 404, "pane not found")
+  try {
+    const captured = await execImpl(["capture-pane", "-p", "-J", "-S", `-${PREVIEW_LINES}`, "-t", paneId])
+    json(res, 200, { unit: tmuxUnitState(), pane, preview: redactSecrets(captured).text })
+  } catch (err) {
+    fail(res, 503, "capture failed", { detail: err.message })
+  }
+}
+
 async function handleScreen(req, res, paneId) {
   if (req.method !== "GET") return fail(res, 405, "method not allowed")
   const raw = new URL(req.url, "http://localhost").searchParams.get("lines")
@@ -140,12 +163,12 @@ async function handleInput(req, res, paneId) {
   } catch {
     return fail(res, 400, "body must be JSON")
   }
-  const { text, enter = false, expectedCommand, expectedTitle } = body
+  const { text, enter = false, expectedCommand, expectedTitle, expectedCwd } = body
   if (typeof text !== "string") return fail(res, 400, "text (string) is required")
   // The stale-pane guard is not optional: typing into a pane nobody has looked at is exactly the
   // failure mode the design forbids. The caller proves recency by echoing what it last observed.
-  if (typeof expectedCommand !== "string" && typeof expectedTitle !== "string") {
-    return fail(res, 400, "expectedCommand or expectedTitle is required (pass what you last observed)")
+  if (typeof expectedCommand !== "string" && typeof expectedTitle !== "string" && typeof expectedCwd !== "string") {
+    return fail(res, 400, "expectedCommand, expectedTitle or expectedCwd is required (pass what you last observed)")
   }
 
   let pane
@@ -161,6 +184,9 @@ async function handleInput(req, res, paneId) {
   if (typeof expectedTitle === "string" && pane.title !== expectedTitle) {
     return fail(res, 409, "pane changed since observed", { field: "title", expected: expectedTitle, actual: pane.title })
   }
+  if (typeof expectedCwd === "string" && pane.cwd !== expectedCwd) {
+    return fail(res, 409, "pane changed since observed", { field: "cwd", expected: expectedCwd, actual: pane.cwd })
+  }
 
   try {
     // -l: literal keystrokes (so "Enter"/"C-c" in the text are typed, not interpreted); -- ends
@@ -171,7 +197,7 @@ async function handleInput(req, res, paneId) {
     return fail(res, 503, "send failed", { detail: err.message })
   }
   // Metadata only — the text itself is never logged.
-  console.log(`[tmux-bridge] input pane=${paneId} command=${pane.command} bytes=${Buffer.byteLength(text)} enter=${!!enter}`)
+  console.log(`[tmux-bridge] input ts=${new Date().toISOString()} pane=${paneId} command=${pane.command} bytes=${Buffer.byteLength(text)} enter=${!!enter}`)
   json(res, 200, { ok: true, unit: tmuxUnitState(), pane: { id: pane.id, command: pane.command, title: pane.title } })
 }
 
@@ -179,11 +205,12 @@ async function handleInput(req, res, paneId) {
 async function handleTmuxBridge(req, res) {
   if (!tokenOk(req.url)) return json(res, 401, { error: "unauthorized" })
   const path = (req.url || "/").split("?")[0]
-  const m = path.match(/^\/tmux\/panes(?:\/([^/]+)\/(screen|input))?\/?$/)
+  const m = path.match(/^\/tmux\/panes(?:\/([^/]+)(?:\/(screen|input))?)?\/?$/)
   if (!m) return fail(res, 404, "not found")
   if (!m[1]) return handlePanes(req, res)
   const paneId = paneIdOf(m[1])
   if (!paneId) return fail(res, 400, "invalid pane id (want %N)")
+  if (!m[2]) return handlePaneDetail(req, res, paneId)
   return m[2] === "screen" ? handleScreen(req, res, paneId) : handleInput(req, res, paneId)
 }
 
