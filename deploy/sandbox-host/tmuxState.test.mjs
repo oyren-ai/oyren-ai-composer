@@ -45,8 +45,19 @@ test("save, die, restore: layout and cwds come back; empty servers are never rec
     spawnSync("node", [CLI, cmd, ...flag], { encoding: "utf8", env: { ...env, ...extraEnv } })
   let server = null
   const emptyServer = async () => {
-    server = spawn("tmux", ["-f", CONF, "-u", "-D"], { stdio: "ignore", env })
-    for (let i = 0; i < 20 && !existsSync(socketPath(env, process.getuid())); i++) await sleep(100)
+    // A freshly killed server can still be holding its socket for a beat, so a new -D server may
+    // fail with "server exited unexpectedly". Retry until one actually answers `list-sessions` —
+    // socket existence is not enough, since a dead server's socket path lingers.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      server = spawn("tmux", ["-f", CONF, "-u", "-D"], { stdio: "ignore", env })
+      for (let i = 0; i < 100; i++) {
+        if (server.exitCode !== null || server.signalCode !== null) break
+        if (spawnSync("tmux", ["-f", CONF, "list-sessions"], { encoding: "utf8", env }).status === 0) return
+        await sleep(100)
+      }
+      try { server.kill() } catch {}
+      await sleep(200)
+    }
   }
   t.after(() => { tmux("kill-server"); try { server?.kill() } catch {} })
 

@@ -32,7 +32,7 @@ test("--dry-run --json prints the plan and a JSON summary that says nothing was 
   assert.equal(plan[0], "would: systemctl start oyren-tmux-save.service", "the layout is saved while the server is up")
   assert.equal(plan[1], "would: systemctl stop oyren-tmux", "then the shells go")
   assert.equal(plan[plan.length - 1], "would: cloud-init clean --logs", "cloud-init clean is last")
-  assert.ok(plan.some((l) => l.includes("rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache")))
+  assert.ok(plan.some((l) => l.startsWith("would: rm -rf /var/lib/apt/lists") && l.includes("/root/.npm /root/.cache")), "apt lists and root caches are cleaned")
   assert.ok(plan.some((l) => l.includes("rm -f /etc/oyren/editor-surface")))
   assert.ok(!plan.some((l) => /\/home\b/.test(l)), "nothing under /home is ever named")
   assert.ok(!plan.some((l) => /pnpm/.test(l)), "the pnpm store stays")
