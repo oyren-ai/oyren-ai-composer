@@ -63,6 +63,13 @@ PATH=${PNPM_HOME}:/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbi
 PNPM_HOME=${PNPM_HOME}
 LANG=C.UTF-8
 LC_ALL=C.UTF-8
+# The agents' permission-bypass depends on this, and it MUST live here rather than only in
+# install-agents.sh's /etc/profile.d drop-in: profile.d is read by login shells, and both the runtime
+# and the editor are systemd units, which read these EnvironmentFiles and nothing else. Without it
+# Claude Code's guard sees ${SANDBOX_USER}'s NOPASSWD sudo (granted below), silently downgrades the
+# seeded bypassPermissions to "default", and the browser editor's Claude extension — plus every
+# agent the runtime spawns — starts asking before each tool call. The VM is the boundary here.
+IS_SANDBOX=1
 # npm/pnpm on a small droplet hit flaky registry TLS; the container tuned these the same way.
 npm_config_fetch_retries=6
 npm_config_fetch_retry_mintimeout=10000

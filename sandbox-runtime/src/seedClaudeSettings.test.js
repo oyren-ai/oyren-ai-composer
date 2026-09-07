@@ -16,6 +16,8 @@ test("seeds settings.json with bypassPermissions mode AND the disclaimer-skip fl
   // Mode alone is silently downgraded to "default" — both keys are required for unattended bypass.
   assert.equal(json.permissions.defaultMode, "bypassPermissions")
   assert.equal(json.skipDangerousModePermissionPrompt, true)
+  // Honoured in "default" mode too, so even a downgraded session runs unattended.
+  assert.deepEqual(json.permissions.allow, ["Bash", "Edit", "Write", "WebFetch", "WebSearch"])
 })
 
 test("creates ~/.claude when it does not exist yet", () => {
@@ -36,7 +38,16 @@ test("merges into an existing settings.json without clobbering other keys", () =
   seedClaudeSettings({ home })
   const json = readSettings(home)
   assert.equal(json.model, "keep-me") // unrelated top-level key preserved
-  assert.deepEqual(json.permissions.allow, ["Bash(ls:*)"]) // existing permissions sub-key preserved
+  assert.equal(json.permissions.allow[0], "Bash(ls:*)") // existing rule preserved, and kept first
+  assert.ok(json.permissions.allow.includes("Bash")) // defaults unioned in behind it
   assert.equal(json.permissions.defaultMode, "bypassPermissions") // new mode added
   assert.equal(json.skipDangerousModePermissionPrompt, true)
+})
+
+test("re-seeding does not duplicate allow rules", () => {
+  const home = tmpHome()
+  seedClaudeSettings({ home })
+  seedClaudeSettings({ home }) // every boot re-seeds; the list must not grow
+  const { allow } = readSettings(home).permissions
+  assert.deepEqual(allow, [...new Set(allow)])
 })
