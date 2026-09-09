@@ -48,6 +48,21 @@ test("lists the Cursor CLI under the name that actually runs it", () => {
   assert.match(out, /cursor-agent\s+Cursor CLI/)
 })
 
+// Same gap as cursor-agent, and worse: the product is called "Antigravity" but the binary is `agy`,
+// so a user who never sees this line has no way to guess what to type.
+test("lists Antigravity under the binary name that actually runs it", () => {
+  const { out } = run(["agy"])
+  assert.match(out, /agy\s+Antigravity/)
+})
+
+// dsh is not browser-only: `--profile headless` answers one task in the terminal. The banner said
+// only "run oyren-dsh-web for its browser UI", which read as though the browser were the only way in.
+test("the dsh line documents the terminal mode as well as the browser UI", () => {
+  const { out } = run(["dsh"])
+  assert.match(out, /dsh --profile headless/)
+  assert.match(out, /oyren-dsh-web/)
+})
+
 test("names line up in one column even for the longest CLI name", () => {
   const { out } = run(["claude", "cursor-agent", "dsh"])
   // `cursor-agent` is four characters longer than anything that came before it, so the padding width
