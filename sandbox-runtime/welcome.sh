@@ -32,13 +32,17 @@ assistants="$(
   print_assistant opencode     "opencode — open-source, multi-model"
   print_assistant qwen         "Qwen Code (Alibaba)"
   print_assistant gemini       "Gemini CLI (Google)"
+  # agy, not "antigravity": the binary installed by install_agy is `agy`, and the banner exists
+  # to tell you what to TYPE. Unlisted since it was first baked — same gap cursor-agent had.
+  print_assistant agy          "Antigravity (Google)"
   print_assistant codex        "Codex CLI (OpenAI)"
   # cursor-agent, not the `agent` alias it also installs: `agent` is too generic to print as an
   # instruction here, and both symlinks point at the same binary (see install-agents.sh).
   print_assistant cursor-agent "Cursor CLI (Cursor)"
-  # dsh is the one agent you do not simply type: it serves a browser UI rather than a TUI, and
-  # oyren-dsh-web is what starts it AND serves it on the Codespace's dsh-<label> hostname (see dsh-web.sh).
-  print_assistant dsh          "DeepSeek Harness — run \`oyren-dsh-web\` for its browser UI"
+  # dsh has no TUI, but it is not browser-only either: the headless profile answers one task in this
+  # terminal and exits, while oyren-dsh-web starts the browser UI AND serves it on the Codespace's
+  # dsh-<label> hostname (see dsh-web.sh). `--profile tui` does not exist; only web and headless do.
+  print_assistant dsh          "DeepSeek Harness — \`dsh --profile headless\` here, or \`oyren-dsh-web\` for its browser UI"
 )"
 
 cat <<EOF
