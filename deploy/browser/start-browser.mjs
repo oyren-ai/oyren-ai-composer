@@ -17,6 +17,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mergedEnv } from './sessionEnv.mjs'
 import { cleanStaleDisplay, resolveXvncBin, waitForFile } from './zedStack.mjs'
 import { createIdleWatch } from './idleWatch.mjs'
+import { clearStaleProfileLock } from './chromeProfileLock.mjs'
 
 const env = mergedEnv()
 
@@ -122,6 +123,13 @@ supervise('openbox', 'openbox', ['--config-file', '/etc/oyren/zed/rc.xml'])
 // NO --no-sandbox: install-browser.sh installs the SUID chrome-sandbox helper beside the binary,
 // so Chrome keeps its own sandbox even though the droplet's AppArmor forbids unprivileged user
 // namespaces. A browser the user signs into Google with should not be the one running unsandboxed.
+// The profile is persistent BY DESIGN (that is what survives an idle stop), so it also survives
+// the container. A SingletonLock naming a host that is not this one is one Chrome refuses to break
+// itself — it exits 21, supervise() exits 1, and Restart=on-failure loops the stack forever. Break
+// it here, and only when nothing can still own it. See chromeProfileLock.mjs.
+const brokenLock = clearStaleProfileLock(PROFILE_DIR)
+if (brokenLock) console.log(`cleared a dead profile lock (${brokenLock}) — this browser's previous container is gone`)
+
 supervise('chrome', resolveChrome(), [
   `--user-data-dir=${PROFILE_DIR}`,
   '--no-first-run', '--no-default-browser-check',
