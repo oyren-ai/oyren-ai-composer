@@ -32,9 +32,12 @@ test("a rewritten manifest is picked up without a restart (mtime changes invalid
   const file = tmpFile()
   fs.writeFileSync(file, JSON.stringify(MANIFEST))
   assert.equal(readImageManifest({ file }).version, "2026-08-25-1838")
-  const past = new Date(Date.now() - 60_000)
-  fs.utimesSync(file, past, past)
   fs.writeFileSync(file, JSON.stringify({ ...MANIFEST, version: "2026-08-26-0910" }))
+  // Both writes can land in the same mtime millisecond on a fast disk, which the mtime-keyed cache
+  // (correctly, per its contract) reads as "unchanged". Move the clock explicitly: the contract is
+  // "re-read when the mtime MOVES", so the test must actually move it.
+  const future = new Date(Date.now() + 60_000)
+  fs.utimesSync(file, future, future)
   assert.equal(readImageManifest({ file }).version, "2026-08-26-0910")
 })
 

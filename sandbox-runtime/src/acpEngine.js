@@ -93,6 +93,19 @@ async function send(payload, turnId) {
 
 async function interrupt() { if (rpc && sessionId) rpc.notify("session/cancel", { sessionId }); busy = false; pendingPrompts = 0 } // prompt resolves stopReason=cancelled
 
+// Conversation reset (POST /agent/reset): cancel any running prompt first, then kill the child and
+// clear the persisted ACP session id — the next send() spawns fresh and session/new's instead of
+// session/load'ing the old conversation. generation++ makes any in-flight turn finisher stale so it
+// can't clobber the successor's state. Idempotent; safe with no child running.
+async function reset() {
+  try { await interrupt() } catch { /* a dying child must not block the reset */ }
+  generation++
+  killChild()
+  busy = false; pendingPrompts = 0; sessionLoaded = false
+  tstate = translate.createState()
+  require("./acp/acpSession").writeSessionId("")
+}
+
 const { listModels, setModel } = makeModelSurface({
   ensureStarted, rpc: () => rpc, sessionId: () => sessionId,
   sessionModels: () => sessionModels, getModel: () => model, rememberModel: (id) => { model = id },
@@ -101,4 +114,4 @@ const { listModels, setModel } = makeModelSurface({
 const replayTurn = (turnId) => track.replay(turnId)
 const state = () => ({ busy, model, started: !!sessionId, ...track.turnState() })
 
-module.exports = { send, interrupt, listModels, setModel, state, replayTurn, __setSpawnImpl }
+module.exports = { send, interrupt, reset, listModels, setModel, state, replayTurn, __setSpawnImpl }

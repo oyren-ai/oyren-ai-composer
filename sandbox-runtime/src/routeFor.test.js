@@ -48,6 +48,15 @@ test("runs.html is the browsable HTML page, distinct from the JSON runs endpoint
   assert.equal(routeFor("/_oyren/runs").kind, "runs") // JSON endpoint is untouched
 })
 
+test("the tmux bridge owns the /tmux prefix, and only as a real prefix", () => {
+  assert.equal(routeFor("/tmux/panes").kind, "tmux")
+  assert.equal(routeFor("/tmux/panes?token=x").kind, "tmux")
+  assert.equal(routeFor("/tmux/panes/%2512/screen?token=x&lines=50").kind, "tmux")
+  assert.equal(routeFor("/tmux/panes/%2512/input").kind, "tmux")
+  assert.equal(routeFor("/tmux").kind, "tmux")
+  assert.equal(routeFor("/tmuxedo").kind, "app") // not a prefix match
+})
+
 test("how-to-deploy is static, with and without trailing path", () => {
   assert.equal(routeFor("/how-to-deploy").kind, "static")
   assert.equal(routeFor("/how-to-deploy/").kind, "static")
@@ -72,6 +81,8 @@ test("the interactive agent endpoints each get their own kind", () => {
   assert.equal(routeFor("/agent/models?token=x").kind, "agent-models")
   assert.equal(routeFor("/agent/model").kind, "agent-model") // /model is distinct from /models
   assert.equal(routeFor("/agent/current").kind, "agent-current")
+  assert.equal(routeFor("/agent/reset?token=x").kind, "agent-reset")
+  assert.equal(routeFor("/agent/resetxyz").kind, "app") // not a prefix match
 })
 
 test("everything else is the user app", () => {

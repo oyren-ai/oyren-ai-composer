@@ -119,6 +119,10 @@ test("partial output is visible while running via onOutput callback", async () =
   // Initially empty
   assert.deepEqual(jobs.result(runId), { status: "running", stdout: "", stderr: "" })
 
+  // start() invokes the run callback on a deferred microtask, so onOutput isn't captured until we
+  // yield — same timing every real runner sees (it's handed the callback when its promise starts).
+  await settle()
+
   // Simulate incremental output
   capturedOnOutput("hello ", "")
   assert.deepEqual(jobs.result(runId), { status: "running", stdout: "hello ", stderr: "" })

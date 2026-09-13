@@ -35,23 +35,28 @@ function reportMetaAfterTurn() {
 }
 
 // Consume the SDK message generator forever: record every message, keep session_id/model/busy current.
+// The pump captures ITS OWN query object: after a reset() a successor session may already be live while
+// this pump drains its tail, and a stale pump must neither clobber the successor's state nor re-persist
+// the just-cleared session id.
 async function pump() {
+  const q = queryObj
   try {
-    for await (const message of queryObj) {
-      if (message && typeof message.session_id === "string") writeSessionId(message.session_id)
-      if (message && message.type === "system" && message.model) model = message.model
+    for await (const message of q) {
+      const current = queryObj === q
+      if (current && message && typeof message.session_id === "string") writeSessionId(message.session_id)
+      if (current && message && message.type === "system" && message.model) model = message.model
       const result = isResult(message)
-      if (result) { busy = false; reportMetaAfterTurn() }
+      if (result && current) { busy = false; reportMetaAfterTurn() }
       const line = JSON.stringify(message)
       track.recordLine(line, result) // mirror into the loop-compat turn (no-op unless an id-tagged turn is open)
       broadcast.record(line)
     }
   } catch (err) {
-    broadcast.record(JSON.stringify({ type: "result", is_error: true, error: String(err && err.message || err) }))
+    if (queryObj === q) broadcast.record(JSON.stringify({ type: "result", is_error: true, error: String(err && err.message || err) }))
   } finally {
     // The session ended (SDK closed the stream / crashed). Drop it so the next send() starts a fresh one,
-    // resuming the same claude session_id for continuity.
-    busy = false; queryObj = null; input = null; starting = null
+    // resuming the same claude session_id for continuity — unless a successor already took over.
+    if (queryObj === q) { busy = false; queryObj = null; input = null; starting = null }
   }
 }
 
@@ -92,9 +97,20 @@ async function send(payload, turnId) {
 }
 
 async function interrupt() { if (queryObj) await queryObj.interrupt(); busy = false }
+
+// Conversation reset (POST /agent/reset): interrupt any running turn FIRST (the interrupt-before-
+// switch ordering next's useGuardedModelSelect.ts documents), then tear the live session down and
+// clear the persisted resume id, so the next send() starts a genuinely fresh conversation instead
+// of --resume'ing the old one. Idempotent; a no-op-safe sequence when nothing is running.
+async function reset() {
+  try { if (queryObj) await queryObj.interrupt() } catch { /* a dying session must not block the reset */ }
+  try { if (input && input.close) input.close() } catch { /* ditto */ }
+  busy = false; queryObj = null; input = null; starting = null
+  writeSessionId("")
+}
 async function listModels() { await ensureStarted(); return { models: await queryObj.supportedModels(), current: model } }
 async function setModel(id) { await ensureStarted(); await queryObj.setModel(id || undefined); model = id || null }
 const replayTurn = (turnId) => track.replay(turnId) // loop reconcile: buffered lines for an id-tagged turn
 const state = () => ({ busy, model, started: !!queryObj, ...track.turnState() })
 
-module.exports = { send, interrupt, listModels, setModel, state, replayTurn, __setQueryImpl }
+module.exports = { send, interrupt, reset, listModels, setModel, state, replayTurn, __setQueryImpl }

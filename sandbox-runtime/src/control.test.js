@@ -142,7 +142,8 @@ test("run with detach:true answers { runId } immediately and run_result polls it
   assert.ok(runId, "immediate { runId } — the job runs in the background")
   const running = makeRes()
   await handleControl(makeReq({ url: "/_oyren/control/run_result", headers: auth, body: JSON.stringify({ runId }) }), running, deps)
-  assert.deepEqual(running.json(), { status: "running" })
+  // Running answers carry live partial output since runJobs grew onOutput streaming.
+  assert.deepEqual(running.json(), { status: "running", stdout: "", stderr: "" })
   finish()
   await new Promise((r) => setImmediate(r))
   const done = makeRes()

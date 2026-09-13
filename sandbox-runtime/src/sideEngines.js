@@ -84,6 +84,10 @@ async function send(kind, payload, sink) {
 }
 
 async function interrupt(kind) { const e = engines.get(kind); if (e && e.rpc && e.sessionId) e.rpc.notify("session/cancel", { sessionId: e.sessionId }) }
+
+/** Conversation reset: drop every live side engine (kills the CLI children); the next send per kind
+ *  starts a fresh session. Side engines persist nothing, so dropping IS the full reset. */
+function resetAll() { for (const e of [...engines.values()]) drop(e) }
 async function listModels(kind) { return engineFor(kind).surface.listModels() }
 async function setModel(kind, id) { return engineFor(kind).surface.setModel(id) }
 
@@ -93,4 +97,4 @@ if (reaper.unref) reaper.unref()
 
 function __setSpawnImpl(fn) { spawnImpl = fn; for (const e of [...engines.values()]) drop(e) }
 
-module.exports = { isSideKind, send, interrupt, listModels, setModel, __setSpawnImpl }
+module.exports = { isSideKind, send, interrupt, resetAll, listModels, setModel, __setSpawnImpl }
