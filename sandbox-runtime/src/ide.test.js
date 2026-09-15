@@ -79,10 +79,37 @@ test("accepts the /workspace alias for the real workspace directory", () => {
     ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Facme%2Fsrc`, workdir, "/home/oyren/workspace"),
     null,
   )
-  assert.match(
+  // A sibling repo reached via the alias is inside the workspace root, so it is now allowed too.
+  assert.equal(
     ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace%2Fother`, workdir, "/home/oyren/workspace"),
-    /folder=%2Fhome%2Foyren%2Fworkspace%2Facme/,
+    null,
   )
+})
+
+// VS Code's own File > Open Folder can point anywhere. The pin only needs to keep the session
+// inside the workspace root, not inside the one repo it started on.
+test("lets the editor open anywhere inside the workspace root", () => {
+  const workdir = "/home/oyren/workspace/acme"
+  const workspaceDir = "/home/oyren/workspace"
+
+  assert.equal(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fhome%2Foyren%2Fworkspace`, workdir, workspaceDir),
+    null,
+  )
+  assert.equal(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fhome%2Foyren%2Fworkspace%2Fother%2Fsrc`, workdir, workspaceDir),
+    null,
+  )
+  assert.equal(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fworkspace`, workdir, workspaceDir), null)
+
+  const pinned = /folder=%2Fhome%2Foyren%2Fworkspace%2Facme/
+  assert.match(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fhome%2Foyren`, workdir, workspaceDir), pinned)
+  assert.match(
+    ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fhome%2Foyren%2Fworkspace-other`, workdir, workspaceDir),
+    pinned,
+  )
+  assert.match(ideFolderRedirect(`/_oyren/ide/${T}/?folder=%2Fetc`, workdir, workspaceDir), pinned)
+  assert.match(ideFolderRedirect(`/_oyren/ide/${T}/?ew=true`, workdir, workspaceDir), pinned)
 })
 
 test("never redirects asset or websocket requests", () => {
