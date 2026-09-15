@@ -69,12 +69,20 @@ what runs before the disk is snapshotted at session end. See `docs/sandbox-updat
 | `CURSOR_API_KEY` | Cursor API key — `agent` / `cursor-agent` reads it from the env directly (no file seeding). Unattended approval is seeded into `~/.cursor/cli-config.json` by `seedCursorSettings` |
 | `OPENCODE_MODEL` | opencode default model id (`openrouter/<model>`), written as `model` into `opencode.json` |
 | `DEEPSEEK_API_KEY` | DeepSeek Harness (`dsh`) key — read from the inherited environment by dsh itself, so nothing is seeded. Its Settings → Models page is the alternative, which stores the key in `$DSH_HOME/.credentials.yaml` |
+| `OYREN_API_KEY` | Existing opt-in Oyren wallet key. When attached, `oyren-dsh-web` adds a static `Oyren` OpenRouter provider whose configuration references this environment-variable name; the spendable value is never copied into DSH settings, argv, logs, or the image. When absent, the provider is not added |
 | `OYREN_DSH_PORT` | loopback port for the DeepSeek Harness web UI (default `3080`) |
 | `OYREN_DSH_ROUTE` | proxy prefix `oyren-dsh-web` registers for that UI on the session host. Default `none` when the Codespace has a `dsh-<label>` hostname (derived from `OYREN_PUBLIC_ORIGIN`; the router serves dsh on it whole, token/cookie-gated — `src/dshRouter.js`), `/` otherwise. dsh serves root-absolute assets, so a stripped prefix breaks it — see `dsh-web.sh` |
 | `OYREN_BROWSER_PORT` | loopback KasmVNC port for the in-VM browser (default `6091`); the router serves it at `/_oyren/browser/<token>/`. That browser's `localhost` is the sandbox, which is what makes an agent CLI's loopback OAuth callback completable |
 | `OYREN_BROWSER_IDLE_MINUTES` | stop the browser after this long with no viewer (default `30`, `0` disables). Cheap to resume: its Chrome profile is on disk, so a completed login survives the stop |
 | `OYREN_BROWSER_START_URL` | page the browser opens with (default `about:blank`) |
 | `OYREN_BROWSER_PROFILE` | Chrome profile dir (default `$HOME/.oyren-browser`) |
+
+DeepSeek Harness therefore has two independent credential paths. `DEEPSEEK_API_KEY` is the native
+DeepSeek route and keeps DSH's shipped catalog (including its V4.1 entries). Attaching the Oyren wallet
+adds the `Oyren` provider at `https://openrouter.ai/api/v1` with V4.1 Flash, V4 Pro 0813, and V4 Flash
+Vision Exp; the two Flash entries accept image input. The wallet provider is launch-time opt-in, while
+the user's `$DSH_HOME/settings.yaml`, sessions, and saved model choices remain durable and continue to
+override the supplied provider defaults through DSH's normal settings layer.
 
 ## Develop & test
 
