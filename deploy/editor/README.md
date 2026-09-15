@@ -68,10 +68,11 @@ at the VS Code Marketplace violates its terms of use, so do not "fix" that.
 
 ## The agent picker
 
-`machine-settings.json` maps the terminal profile dropdown to `oyren-agent-term`. The default
-profile attaches to the tmux session named `main`, so the editor terminal and any other terminal
-attached to that session show one live conversation. The named profiles start a separate agent, in
-its own tmux session, sharing the filesystem but not the conversation.
+`machine-settings.json` makes a plain `bash -l` shell the default integrated terminal. It runs
+without tmux and ends when its editor terminal tab closes. The terminal profile dropdown still
+offers `Agent`, which attaches to the tmux session named `main`, plus named profiles that start a
+separate agent in its own tmux session. Those profiles share the filesystem, but not the
+conversation, and their tmux sessions survive closing the editor terminal tab.
 
 This needs the agent CLIs on `PATH` (`../sandbox-host/install-agents.sh`) and a launcher at
 `/app/agent-launch.sh` — override with `OYREN_AGENT_LAUNCH`.
