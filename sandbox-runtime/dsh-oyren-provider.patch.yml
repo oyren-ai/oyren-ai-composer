@@ -1,0 +1,27 @@
+# Opt-in provider defaults for Codespaces launched with the existing Oyren wallet key.
+# dsh resolves apiKeyEnv per request; the spendable value remains in the process
+# environment and is never written to this file or the user's settings document.
+#
+# The user-owned `$DSH_HOME/settings.yaml` layer remains authoritative at runtime:
+# dsh-llm-pi-ai merges that namespace over these composition defaults.
+- id: llm-pi-ai
+  config:
+    providers:
+      oyren:
+        displayName: Oyren
+        apiKeyEnv: OYREN_API_KEY
+        api: openai-completions
+        baseURL: https://openrouter.ai/api/v1
+        models:
+          - id: deepseek/deepseek-v4.1-flash
+            name: DeepSeek V4.1 Flash
+            contextWindow: 1048576
+            input: [text, image]
+          - id: deepseek/deepseek-v4-pro-0813
+            name: DeepSeek V4 Pro 0813
+            contextWindow: 1048576
+            input: [text]
+          - id: deepseek/deepseek-v4-flash-vision-exp
+            name: DeepSeek V4 Flash Vision Exp
+            contextWindow: 1048576
+            input: [text, image]

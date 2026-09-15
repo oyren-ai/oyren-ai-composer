@@ -5,7 +5,7 @@
 # nothing to run inside a tmux pane and nothing for acpEngine.js to spawn. Its interactive surface is
 # a web app, which makes reaching it from the user's browser this script's whole job.
 #
-# Three constraints, all measured against dsh 0.1.0-rc.7 rather than assumed:
+# Three constraints, all measured against dsh 0.1.5-rc.1 rather than assumed:
 #
 #   1. It binds LOOPBACK and refuses `--host 0.0.0.0` outright (usage error). That is fine: the
 #      sandbox server proxies to 127.0.0.1:<port> from inside the same box (src/dshRouter.js).
@@ -18,7 +18,7 @@
 #      rejected 403 unless its Host was passed as --trusted-host. Both hostnames are passed — the
 #      dsh host is where it lives now, the session host is the fallback of constraint 2.
 #
-# Model choice is dsh's own (Settings → Models, or DEEPSEEK_API_KEY + its default): `dsh web` has no
+# Model choice is dsh's own (Settings → Models, or DEEPSEEK_API_KEY + its default): the web profile has no
 # --model flag, so AGENT_MODEL is deliberately NOT forwarded — passing it would reach the web app's
 # argument parser as an unknown flag and refuse to boot.
 #
@@ -26,7 +26,9 @@
 #   OYREN_DSH_PORT   loopback port for the UI (default 3080, dsh's own default)
 #   OYREN_DSH_ROUTE  proxy prefix to register (default "none" when the dsh host is derivable, else "/")
 #   DEEPSEEK_API_KEY read by dsh itself from the inherited environment — nothing to seed here
-# Extra arguments are forwarded to `dsh web` verbatim.
+#   OYREN_API_KEY    existing opt-in wallet key; when non-empty, attach the static Oyren provider
+#                    overlay by environment-variable reference (the key value never enters argv/files)
+# Extra arguments are forwarded to `dsh --profile web` verbatim.
 set -u
 
 export PATH="/usr/local/share/pnpm:/app/node_modules/.bin:$PATH"
@@ -97,4 +99,14 @@ host="$(public_authority)"
 [ -n "$DSH_HOST" ] && args+=(--trusted-host "$DSH_HOST")
 [ -n "$DSH_HOST" ] && echo "oyren-dsh-web: serving the DeepSeek Harness on https://$DSH_HOST (port $PORT_DSH)"
 
-exec dsh web "${args[@]}" "$@"
+patches=()
+if [ -n "${OYREN_API_KEY:-}" ]; then
+  oyren_patch="${OYREN_DSH_OYREN_PATCH:-/app/dsh-oyren-provider.patch.yml}"
+  [ -r "$oyren_patch" ] || {
+    echo "oyren-dsh-web: Oyren provider overlay is missing: $oyren_patch" >&2
+    exit 1
+  }
+  patches+=(--patch "$oyren_patch")
+fi
+
+exec dsh --profile web "${patches[@]}" "${args[@]}" "$@"
