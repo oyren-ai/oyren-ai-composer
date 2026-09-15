@@ -13,12 +13,12 @@ const targets = [
     rel: "@deepseek-ai/dsh-client-connection/lib/index.js",
     pairs: [
       [
-        '* privileged methods additionally pass it with an empty trust list, which\n* pins them to loopback.',
-        '* privileged methods additionally pass the fence a second time against the\n* declared `trustedHosts` (loopback plus this deployment\'s authorities), so\n* the configuration plane stays closed to anonymous callers while remaining\n* usable through an authenticated edge proxy that forwards the declared\n* Host/Origin pair (Oyren sandbox deployment: the router token-gates the dsh\n* hostname before proxying).'
+        'requestRejection(request) {\n\t\tif (!isTrustedApiRequest(request, this.trustedHosts)) return 403;\n\t\treturn this.browserAuth.isAuthenticated(request) ? void 0 : 401;\n\t}',
+        'requestRejection(request) {\n\t\tif (!isTrustedApiRequest(request, this.trustedHosts)) return 403;\n\t\t/* Oyren: the token-gated dsh hostname is the authentication boundary. */\n\t}'
       ],
       [
-        'if (method !== void 0 && PRIVILEGED_METHODS.has(method) && !isTrustedApiRequest(request, [])) return new Response("forbidden", { status: 403 });',
-        'if (method !== void 0 && PRIVILEGED_METHODS.has(method) && !isTrustedApiRequest(request, trustedHosts)) return new Response("forbidden", { status: 403 });'
+        'authorizeIndex(request, response) {\n\t\treturn this.browserAuth.authorizeIndex(request, response);\n\t}',
+        'authorizeIndex(request, response) {\n\t\tif (isTrustedApiRequest(request, this.trustedHosts)) return true;\n\t\tresponse.writeHead(403, { "cache-control": "no-store", "content-type": "text/plain; charset=utf-8" });\n\t\tresponse.end(request.method === "HEAD" ? void 0 : "forbidden\\n");\n\t\treturn false;\n\t}'
       ]
     ]
   },
@@ -27,12 +27,8 @@ const targets = [
     rel: "@deepseek-ai/dsh-client-ui-settings/lib/client.js",
     pairs: [
       [
-        'const mirror = new SettingsDescribeMirror(connection.api, connection.isLoopback ? "host" : "memory");',
-        'const mirror = new SettingsDescribeMirror(connection.api, "host");'
-      ],
-      [
-        'const controller = new SettingsScopeController(connection.api, spec, this.mirror, connection.isLoopback ? "host" : "memory", this.schema);',
-        'const controller = new SettingsScopeController(connection.api, spec, this.mirror, "host", this.schema);'
+        'const persistence = ctx.remote.$host.isLoopback ? "host" : "memory";',
+        'const persistence = "host";'
       ]
     ]
   },
@@ -41,8 +37,8 @@ const targets = [
     rel: "@deepseek-ai/dsh-client-ui-settings-general/lib/client.js",
     pairs: [
       [
-        'const documentController = connection.isLoopback ? new SettingsDocumentStore(connection.api, ctx.settingsScope.describe()) : void 0;',
-        'const documentController = new SettingsDocumentStore(connection.api, ctx.settingsScope.describe());'
+        'const documentController = ctx.remote.$host.isLoopback ? new SettingsDocumentStore(ctx, ctx.settingsScope.describe()) : void 0;',
+        'const documentController = new SettingsDocumentStore(ctx, ctx.settingsScope.describe());'
       ]
     ]
   }
@@ -65,18 +61,24 @@ for (const target of targets) {
       failures += 1;
       continue;
     }
+    let next = src;
+    let fileFailures = 0;
     for (const [oldText, newText] of target.pairs) {
-      if (src.includes(newText)) continue; // already patched — nothing to do
-      const parts = src.split(oldText);
-      if (parts.length !== 2) {
-        console.error(`ERROR: expected exactly one occurrence of the pattern in ${file}:\n  ${oldText.slice(0, 90)}...`);
+      const oldCount = next.split(oldText).length - 1;
+      const newCount = next.split(newText).length - 1;
+      if (oldCount === 0 && newCount === 1) continue; // already patched — nothing to do
+      if (oldCount !== 1 || newCount !== 0) {
+        console.error(`ERROR: expected exactly one old or one patched occurrence in ${file}:\n  ${oldText.slice(0, 90)}...`);
         failures += 1;
+        fileFailures += 1;
         continue;
       }
-      src = parts.join(newText);
+      next = next.replace(oldText, newText);
     }
-    fs.writeFileSync(file, src);
-    console.log(`    patched ${path.relative(pnpmRoot, file)}`);
+    if (fileFailures === 0) {
+      fs.writeFileSync(file, next);
+      console.log(`    patched ${path.relative(pnpmRoot, file)}`);
+    }
   }
 }
 if (failures > 0) process.exit(1);

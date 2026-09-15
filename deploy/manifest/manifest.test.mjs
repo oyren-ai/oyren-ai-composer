@@ -35,10 +35,10 @@ test("buildManifest validates the version stamp and the family", () => {
 
 test("diffManifests names only what changed, including added and removed components", () => {
   const installed = { components: { claude: "2.1.191", runtime: "t-old", editor: "1.109.5-oyren.3", lean: null } }
-  const target = { components: { claude: "2.1.235", runtime: "t-old", editor: "1.109.5-oyren.3", lean: null, dsh: "0.1.0-rc.7" } }
+  const target = { components: { claude: "2.1.235", runtime: "t-old", editor: "1.109.5-oyren.3", lean: null, dsh: "0.1.5-rc.1" } }
   assert.deepEqual(diffManifests(installed, target), [
     { component: "claude", from: "2.1.191", to: "2.1.235" },
-    { component: "dsh", from: null, to: "0.1.0-rc.7" },
+    { component: "dsh", from: null, to: "0.1.5-rc.1" },
   ])
   assert.deepEqual(diffManifests(null, { components: { claude: "1" } }), [{ component: "claude", from: null, to: "1" }])
   assert.deepEqual(diffManifests(target, target), [])
