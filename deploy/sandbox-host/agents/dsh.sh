@@ -20,7 +20,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dsh-trusted-host.sh"
 
 # install_dsh <version> [link] — install into /opt/oyren-dsh-<version>, flip the link, smoke it.
 install_dsh() {
-  local version="$1" link="${2:-/opt/oyren-dsh}" dir smoke
+  local version="$1" link="${2:-/opt/oyren-dsh}" dir smoke bin
+  bin="${DSH_BIN:-/usr/local/bin/dsh}"
   dir="${link}-${version}"
   echo "==> deepseek harness ${version} -> ${dir}"
   rm -rf "$dir"
@@ -37,11 +38,11 @@ install_dsh() {
   # An image from before versioned dirs has a real directory at the link: move it aside once.
   if [ -d "$link" ] && [ ! -L "$link" ]; then mv "$link" "${link}-legacy-$(date +%s)"; fi
   ln -sfn "$dir" "$link"
-  printf '%s\n' '#!/bin/sh' "exec \"${link}/node_modules/.bin/dsh\" \"\$@\"" > /usr/local/bin/dsh
-  chmod 0755 /usr/local/bin/dsh
+  printf '%s\n' '#!/bin/sh' "exec \"${link}/node_modules/.bin/dsh\" \"\$@\"" > "$bin"
+  chmod 0755 "$bin"
   # Same reasoning as claude's smoke check: only running it proves the install is usable — a
   # half-resolved plugin tree still leaves a `dsh` on PATH that dies on its first boot.
-  smoke="$(HOME=/root timeout 60 dsh --version 2>&1 || true)"
+  smoke="$(HOME=/root timeout 60 "$bin" --version 2>&1 || true)"
   case "$smoke" in
     *"$version"*) echo "    dsh smoke: $smoke" ;;
     *) echo "ERROR: dsh does not run after install: $smoke" >&2; return 1 ;;
